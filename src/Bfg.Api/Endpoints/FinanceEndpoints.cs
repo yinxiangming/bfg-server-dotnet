@@ -98,13 +98,17 @@ public static class FinanceEndpoints
         var wid = WorkspaceMiddleware.GetWorkspaceId(ctx);
         if (!wid.HasValue) return Results.BadRequest();
         var body = await ctx.Request.ReadFromJsonAsync<PaymentCreateBody>(ct);
-        if (body == null || body.order_id <= 0 || body.gateway_id <= 0 || body.currency_id <= 0) return Results.BadRequest();
+        if (body == null) return Results.BadRequest();
+        // Support both field name styles: order/order_id, gateway/gateway_id
+        var orderId = body.order > 0 ? body.order : body.order_id;
+        var gatewayId = body.gateway > 0 ? body.gateway : body.gateway_id;
+        if (orderId <= 0) return Results.BadRequest(new { order = new[] { "This field is required." } });
         var p = new Payment
         {
             WorkspaceId = wid.Value,
-            OrderId = body.order_id,
-            GatewayId = body.gateway_id,
-            CurrencyId = body.currency_id,
+            OrderId = orderId,
+            GatewayId = gatewayId > 0 ? gatewayId : (int?)null,
+            CurrencyId = body.currency_id > 0 ? body.currency_id : null,
             Amount = decimal.TryParse(body.amount, out var amt) ? amt : 0,
             Status = body.status ?? "pending",
             PaymentNumber = "PAY-" + Guid.NewGuid().ToString("N")[..8],
@@ -164,6 +168,6 @@ public static class FinanceEndpoints
 
     private sealed record CurrencyCreateBody(string? code, string? name, string? symbol, int? decimal_places);
     private sealed record PaymentGatewayCreateBody(string? name, string? gateway_type, bool? is_active);
-    private sealed record PaymentCreateBody(int order_id, int gateway_id, int currency_id, string? amount, string? status);
+    private sealed record PaymentCreateBody(int order_id, int gateway_id, int currency_id, int order, int gateway, string? currency, string? amount, string? status);
     private sealed record InvoiceCreateBody(int? order_id, int? customer_id, string? invoice_number, string? total_amount, string? status, DateTime? issued_at);
 }

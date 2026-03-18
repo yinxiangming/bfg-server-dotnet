@@ -27,6 +27,43 @@ public static class MarketingEndpoints
         group.MapGet("/gift-cards", ListGiftCards);
         group.MapPost("/gift-cards/", CreateGiftCard);
         group.MapPost("/gift-cards/{id:int}/redeem/", RedeemGiftCard);
+
+        // /api/v1/promo/* aliases for marketing resources
+        var promo = app.MapGroup("/api/v1/promo").WithTags("Promo").RequireAuthorization();
+        promo.MapGet("/vouchers", ListVouchers);
+        promo.MapPost("/vouchers/", CreateVoucher);
+        promo.MapGet("/campaigns", ListCampaigns);
+        promo.MapPost("/campaigns/", CreateCampaign);
+    }
+
+    private static async Task<IResult> ListVouchers(BfgDbContext db, HttpContext ctx, CancellationToken ct)
+    {
+        var wid = WorkspaceMiddleware.GetWorkspaceId(ctx);
+        var list = await db.Vouchers.AsNoTracking().Where(v => !wid.HasValue || v.WorkspaceId == wid.Value)
+            .Select(v => new { id = v.Id, code = v.Code, discount_type = v.DiscountType, discount_value = v.DiscountValue.ToString("F2"), is_active = v.IsActive })
+            .ToListAsync(ct);
+        return Results.Ok(new { count = list.Count, next = (string?)null, previous = (string?)null, results = list });
+    }
+
+    private static async Task<IResult> CreateVoucher(BfgDbContext db, HttpContext ctx, CancellationToken ct)
+    {
+        var wid = WorkspaceMiddleware.GetWorkspaceId(ctx);
+        if (!wid.HasValue) return Results.BadRequest();
+        var body = await ctx.Request.ReadFromJsonAsync<VoucherCreateBody>(ct);
+        if (body == null) return Results.BadRequest();
+        var v = new Bfg.Core.Promo.Voucher
+        {
+            WorkspaceId = wid.Value,
+            Code = body.code ?? "",
+            DiscountType = body.discount_type ?? "percentage",
+            DiscountValue = decimal.TryParse(body.discount_value, out var dv) ? dv : 0,
+            IsActive = body.is_active ?? true,
+            UsageLimit = body.usage_limit,
+            CreatedAt = DateTime.UtcNow
+        };
+        db.Vouchers.Add(v);
+        await db.SaveChangesAsync(ct);
+        return Results.Created("/api/v1/promo/vouchers/", new { id = v.Id, code = v.Code, discount_type = v.DiscountType, discount_value = v.DiscountValue.ToString("F2"), is_active = v.IsActive });
     }
 
     private static async Task<IResult> ListCampaigns(BfgDbContext db, HttpContext ctx, HttpRequest req, CancellationToken ct)
@@ -224,4 +261,5 @@ public static class MarketingEndpoints
     private sealed record CouponPatchBody(int? usage_limit);
     private sealed record GiftCardCreateBody(string? initial_value, string? balance, int currency, int? customer, bool? is_active);
     private sealed record RedeemBody(string? amount);
+    private sealed record VoucherCreateBody(string? code, string? discount_type, string? discount_value, bool? is_active, int? usage_limit);
 }

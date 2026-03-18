@@ -18,6 +18,7 @@ public static class StorefrontEndpoints
         group.MapGet("/categories", ListStoreCategories).AllowAnonymous();
         group.MapGet("/categories/{id:int}", GetStoreCategory).AllowAnonymous();
         group.MapGet("/cart/current/", GetCartCurrent).AllowAnonymous();
+        group.MapGet("/cart", GetCartCurrent).AllowAnonymous();
         group.MapPost("/cart/add_item/", StoreCartAddItem).AllowAnonymous();
         group.MapPost("/cart/update_item/", StoreCartUpdateItem).AllowAnonymous();
         group.MapPost("/cart/remove_item/", StoreCartRemoveItem).AllowAnonymous();

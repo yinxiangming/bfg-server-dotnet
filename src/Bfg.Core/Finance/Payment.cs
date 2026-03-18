@@ -9,8 +9,8 @@ public class Payment
     public int WorkspaceId { get; set; }
     public int? OrderId { get; set; }
     public int? CustomerId { get; set; }
-    public int GatewayId { get; set; }
-    public int CurrencyId { get; set; }
+    public int? GatewayId { get; set; }
+    public int? CurrencyId { get; set; }
     public decimal Amount { get; set; }
     public string Status { get; set; } = "pending";
     public string? TransactionId { get; set; }

@@ -50,7 +50,13 @@ public static class ShopEndpoints
         group.MapPatch("/orders/{id:int}", PatchOrder);
         group.MapPost("/orders/{id:int}/update_status/", OrderUpdateStatus);
         group.MapPost("/orders/{id:int}/cancel/", OrderCancel);
+        group.MapPost("/orders/{id:int}/process/", OrderProcess);
+        group.MapPost("/orders/{id:int}/ship/", OrderShip);
+        group.MapPost("/orders/{id:int}/complete/", OrderComplete);
         group.MapPost("/orders/{id:int}/update_items/", OrderUpdateItems);
+        group.MapGet("/order-items", ListOrderItems);
+        group.MapPost("/order-items/", CreateOrderItem);
+        group.MapGet("/order-items/{id:int}", GetOrderItem);
     }
 
     private static async Task<IResult> ListCategories(BfgDbContext db, HttpContext ctx, HttpRequest req, CancellationToken ct)
@@ -674,5 +680,80 @@ public static class ShopEndpoints
     private sealed record OrderPatchBody(string? status, string? payment_status, int? shipping_address_id, int? billing_address_id);
     private sealed record OrderUpdateStatusBody(string? status);
     private sealed record OrderUpdateItemsBody(List<OrderItemInput>? items);
+    private sealed record OrderItemCreateBody(int order, int product, int? variant, int quantity, decimal unit_price);
+
+    private static async Task<IResult> OrderProcess(BfgDbContext db, HttpContext ctx, int id, CancellationToken ct)
+    {
+        var wid = WorkspaceMiddleware.GetWorkspaceId(ctx);
+        var o = await db.Orders.FirstOrDefaultAsync(x => x.Id == id && (!wid.HasValue || x.WorkspaceId == wid.Value), ct);
+        if (o == null) return Results.NotFound();
+        o.Status = "processing"; o.UpdatedAt = DateTime.UtcNow;
+        await db.SaveChangesAsync(ct);
+        return Results.Ok(new { id = o.Id, order_number = o.OrderNumber, status = o.Status });
+    }
+
+    private static async Task<IResult> OrderShip(BfgDbContext db, HttpContext ctx, int id, CancellationToken ct)
+    {
+        var wid = WorkspaceMiddleware.GetWorkspaceId(ctx);
+        var o = await db.Orders.FirstOrDefaultAsync(x => x.Id == id && (!wid.HasValue || x.WorkspaceId == wid.Value), ct);
+        if (o == null) return Results.NotFound();
+        o.Status = "shipped"; o.UpdatedAt = DateTime.UtcNow;
+        await db.SaveChangesAsync(ct);
+        return Results.Ok(new { id = o.Id, order_number = o.OrderNumber, status = o.Status });
+    }
+
+    private static async Task<IResult> OrderComplete(BfgDbContext db, HttpContext ctx, int id, CancellationToken ct)
+    {
+        var wid = WorkspaceMiddleware.GetWorkspaceId(ctx);
+        var o = await db.Orders.FirstOrDefaultAsync(x => x.Id == id && (!wid.HasValue || x.WorkspaceId == wid.Value), ct);
+        if (o == null) return Results.NotFound();
+        o.Status = "completed"; o.UpdatedAt = DateTime.UtcNow;
+        await db.SaveChangesAsync(ct);
+        return Results.Ok(new { id = o.Id, order_number = o.OrderNumber, status = o.Status });
+    }
+
+    private static async Task<IResult> ListOrderItems(BfgDbContext db, HttpContext ctx, CancellationToken ct)
+    {
+        var wid = WorkspaceMiddleware.GetWorkspaceId(ctx);
+        // Filter via join to Orders to respect workspace
+        var orderIds = wid.HasValue
+            ? await db.Orders.AsNoTracking().Where(o => o.WorkspaceId == wid.Value).Select(o => o.Id).ToListAsync(ct)
+            : null;
+        var query = db.OrderItems.AsNoTracking();
+        if (orderIds != null) query = query.Where(i => orderIds.Contains(i.OrderId));
+        var list = await query.Select(i => new { id = i.Id, order = i.OrderId, product = i.ProductId, variant = i.VariantId, quantity = i.Quantity, unit_price = i.UnitPrice.ToString("F2"), total_price = i.TotalPrice.ToString("F2") }).ToListAsync(ct);
+        return Results.Ok(new { count = list.Count, next = (string?)null, previous = (string?)null, results = list });
+    }
+
+    private static async Task<IResult> CreateOrderItem(BfgDbContext db, HttpContext ctx, CancellationToken ct)
+    {
+        var wid = WorkspaceMiddleware.GetWorkspaceId(ctx);
+        if (!wid.HasValue) return Results.BadRequest();
+        var body = await ctx.Request.ReadFromJsonAsync<OrderItemCreateBody>(ct);
+        if (body == null || body.order == 0) return Results.BadRequest();
+        var order = await db.Orders.FirstOrDefaultAsync(o => o.Id == body.order && o.WorkspaceId == wid.Value, ct);
+        if (order == null) return Results.NotFound();
+        var unitPrice = body.unit_price > 0 ? body.unit_price : (await db.Products.Where(p => p.Id == body.product).Select(p => p.Price).FirstOrDefaultAsync(ct));
+        var totalPrice = unitPrice * body.quantity;
+        var item = new Bfg.Core.Shop.OrderItem
+        {
+            OrderId = body.order, ProductId = body.product,
+            VariantId = body.variant, Quantity = body.quantity,
+            UnitPrice = unitPrice, TotalPrice = totalPrice, CreatedAt = DateTime.UtcNow
+        };
+        db.OrderItems.Add(item);
+        order.Subtotal += totalPrice;
+        order.TotalAmount = order.Subtotal + order.ShippingCost - order.Discount;
+        order.UpdatedAt = DateTime.UtcNow;
+        await db.SaveChangesAsync(ct);
+        return Results.Created($"/api/v1/shop/order-items/", new { id = item.Id, order = item.OrderId, product = item.ProductId, variant = item.VariantId, quantity = item.Quantity, unit_price = item.UnitPrice.ToString("F2"), total_price = item.TotalPrice.ToString("F2") });
+    }
+
+    private static async Task<IResult> GetOrderItem(BfgDbContext db, HttpContext ctx, int id, CancellationToken ct)
+    {
+        var item = await db.OrderItems.AsNoTracking().FirstOrDefaultAsync(i => i.Id == id, ct);
+        if (item == null) return Results.NotFound();
+        return Results.Ok(new { id = item.Id, order = item.OrderId, product = item.ProductId, variant = item.VariantId, quantity = item.Quantity, unit_price = item.UnitPrice.ToString("F2"), total_price = item.TotalPrice.ToString("F2") });
+    }
     private sealed record OrderItemInput(int product, int? variant, int? quantity);
 }
