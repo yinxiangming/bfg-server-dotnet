@@ -19,7 +19,11 @@ public class JwtService
     public JwtService(IOptions<JwtOptions> options)
     {
         _options = options.Value;
-        _key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_options.SecretKey));
+        var key = string.IsNullOrWhiteSpace(_options.SecretKey)
+            ? "bfg-dev-fallback-secret-key-32-chars!"
+            : _options.SecretKey;
+        if (key.Length < 32) key = key.PadRight(32, '!');
+        _key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(key));
     }
 
     public (string Access, string Refresh) GeneratePair(User user)

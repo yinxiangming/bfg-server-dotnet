@@ -2,7 +2,7 @@ using Bfg.Core;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Design;
 using Microsoft.Extensions.Configuration;
-using Npgsql.EntityFrameworkCore.PostgreSQL;
+using Pomelo.EntityFrameworkCore.MySql.Infrastructure;
 
 namespace Bfg.Api;
 
@@ -16,11 +16,12 @@ public class BfgDbContextFactory : IDesignTimeDbContextFactory<BfgDbContext>
         var config = new ConfigurationBuilder()
             .SetBasePath(Directory.GetCurrentDirectory())
             .AddJsonFile("appsettings.json", optional: true)
+            .AddJsonFile("appsettings.Development.json", optional: true)
             .AddEnvironmentVariables()
             .Build();
-        var conn = config["DATABASE_URL"] ?? config.GetConnectionString("DefaultConnection") ?? "Host=localhost;Database=bfg;Username=postgres;Password=postgres";
+        var conn = config["DATABASE_URL"] ?? config.GetConnectionString("DefaultConnection") ?? "Server=localhost;Database=bfg-dotnet;User=root;Password=;";
         var options = new DbContextOptionsBuilder<BfgDbContext>()
-            .UseNpgsql(conn, b => b.MigrationsAssembly("Bfg.Api"))
+            .UseMySql(conn, ServerVersion.Parse("8.0.21"), b => b.MigrationsAssembly("Bfg.Api"))
             .Options;
         return new BfgDbContext(options);
     }

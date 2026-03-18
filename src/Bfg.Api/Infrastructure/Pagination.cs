@@ -22,8 +22,8 @@ public static class Pagination
         return new
         {
             count = total,
-            next = page * pageSize < total ? (int?)page + 1 : null,
-            previous = page > 1 ? (int?)page - 1 : null,
+            next = page * pageSize < total ? (string?)$"?page={page + 1}&page_size={pageSize}" : (string?)null,
+            previous = page > 1 ? (string?)$"?page={page - 1}&page_size={pageSize}" : (string?)null,
             results
         };
     }

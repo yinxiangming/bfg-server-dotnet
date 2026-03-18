@@ -9,7 +9,14 @@ public class Order
     public string OrderNumber { get; set; } = "";
     public string Status { get; set; } = "pending";
     public string PaymentStatus { get; set; } = "pending";
+    public decimal Subtotal { get; set; }
+    public decimal ShippingCost { get; set; }
+    public decimal Tax { get; set; }
+    public decimal Discount { get; set; }
     public decimal TotalAmount { get; set; }
+    public int? ShippingAddressId { get; set; }
+    public int? BillingAddressId { get; set; }
+    public string? CustomerNote { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
 }

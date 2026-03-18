@@ -36,7 +36,7 @@ Like Django’s `load_dotenv()`, the API loads a `.env` file at startup via **Do
 
 ## Environment variables
 
-- `DATABASE_URL` – PostgreSQL connection string (or `ConnectionStrings:DefaultConnection`)
+- `DATABASE_URL` – MySQL connection string (e.g. `Server=localhost;Database=bfg-dotnet;User=root;Password=;`) or `ConnectionStrings:DefaultConnection`
 - `FRONTEND_URL` – Frontend base URL (no hardcoded URLs in code)
 - `SITE_NAME` – Site name (default: BFG)
 - `Jwt:SecretKey` / `JWT__SECRET_KEY` – JWT signing key
