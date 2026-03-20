@@ -77,8 +77,14 @@ public static class AuthEndpoints
         JwtService jwt,
         CancellationToken ct)
     {
-        var user = await db.Users.FirstOrDefaultAsync(u => u.Email == req.Email || u.Username == req.Email, ct);
-        if (user == null || !BCrypt.Net.BCrypt.Verify(req.Password ?? "", user.Password))
+        var identifier = !string.IsNullOrWhiteSpace(req.Username) ? req.Username : req.Email;
+        if (string.IsNullOrWhiteSpace(identifier) || string.IsNullOrWhiteSpace(req.Password))
+            return Results.BadRequest(new { detail = "Email/username and password are required." });
+
+        var user = await db.Users.FirstOrDefaultAsync(
+            u => u.Email == identifier || u.Username == identifier,
+            ct);
+        if (user == null || !AppPasswordHasher.Verify(user.Password, req.Password ?? ""))
             return Results.Unauthorized();
 
         if (!user.IsActive)
@@ -139,7 +145,7 @@ public static class AuthEndpoints
 }
 
 record RegisterRequest(string? Email, string? Password, string? PasswordConfirm, string? FirstName, string? LastName);
-record TokenRequest(string? Email, string? Password);
+record TokenRequest(string? Email, string? Username, string? Password);
 record RefreshRequest(string? Refresh);
 record VerifyRequest(string? Token);
 record ForgotPasswordRequest(string? Email);

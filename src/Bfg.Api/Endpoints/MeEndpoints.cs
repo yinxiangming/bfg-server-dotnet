@@ -255,7 +255,35 @@ public static class MeEndpoints
         if (!customerId.HasValue) return Results.Unauthorized();
         var body = await ctx.Request.ReadFromJsonAsync<PaymentMethodCreateBody>(ct);
         if (body == null || body.gateway <= 0) return Results.BadRequest();
-        var pm = new Bfg.Core.Finance.PaymentMethod { CustomerId = customerId.Value, WorkspaceId = wid, GatewayId = body.gateway, MethodType = body.method_type ?? "card", CardholderName = body.cardholder_name ?? "", CardBrand = body.card_brand, CardLast4 = body.card_last4, CardExpMonth = body.card_exp_month, CardExpYear = body.card_exp_year, DisplayInfo = body.display_info, IsDefault = body.is_default ?? true, IsActive = true, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow };
+        if (!wid.HasValue || !await db.PaymentGateways.AsNoTracking().AnyAsync(g => g.Id == body.gateway && g.WorkspaceId == wid.Value, ct))
+            return Results.BadRequest();
+        var mt = body.method_type ?? "card";
+        if (mt.Length > 20) mt = mt[..20];
+        var brand = (body.card_brand ?? "unknown").ToLowerInvariant();
+        if (brand.Length > 20) brand = brand[..20];
+        var last4 = body.card_last4 ?? "0000";
+        last4 = last4.Length >= 4 ? last4[^4..] : last4.PadLeft(4, '0');
+        var disp = body.display_info ?? "";
+        if (disp.Length > 255) disp = disp[..255];
+        var now = DateTime.UtcNow;
+        var pm = new Bfg.Core.Finance.PaymentMethod
+        {
+            CustomerId = customerId.Value,
+            WorkspaceId = wid,
+            GatewayId = body.gateway,
+            MethodType = mt,
+            GatewayToken = "",
+            CardholderName = body.cardholder_name ?? "",
+            CardBrand = brand,
+            CardLast4 = last4,
+            CardExpMonth = body.card_exp_month,
+            CardExpYear = body.card_exp_year,
+            DisplayInfo = disp,
+            IsDefault = body.is_default ?? true,
+            IsActive = body.is_active ?? true,
+            CreatedAt = now,
+            UpdatedAt = now
+        };
         db.PaymentMethods.Add(pm);
         await db.SaveChangesAsync(ct);
         return Results.Created("/api/v1/me/payment-methods/", new { id = pm.Id, method_type = pm.MethodType, card_last4 = pm.CardLast4, is_default = pm.IsDefault });
@@ -266,7 +294,7 @@ public static class MeEndpoints
         var customerId = await GetCurrentCustomerId(db, ctx, ct);
         var pm = await db.PaymentMethods.AsNoTracking().FirstOrDefaultAsync(x => x.Id == id && x.CustomerId == customerId, ct);
         if (pm == null) return Results.NotFound();
-        return Results.Ok(new { id = pm.Id, cardholder_name = pm.CardholderName });
+        return Results.Ok(new { id = pm.Id, cardholder_name = pm.CardholderName, is_default = pm.IsDefault });
     }
 
     private static async Task<IResult> PatchMePaymentMethod(BfgDbContext db, HttpContext ctx, int id, CancellationToken ct)
@@ -279,7 +307,7 @@ public static class MeEndpoints
         if (body?.cardholder_name != null) pm.CardholderName = body.cardholder_name;
         pm.UpdatedAt = DateTime.UtcNow;
         await db.SaveChangesAsync(ct);
-        return Results.Ok(new { id = pm.Id, is_default = pm.IsDefault });
+        return Results.Ok(new { id = pm.Id, is_default = pm.IsDefault, cardholder_name = pm.CardholderName });
     }
 
     private static async Task<IResult> DeleteMePaymentMethod(BfgDbContext db, HttpContext ctx, int id, CancellationToken ct)
@@ -334,7 +362,7 @@ public static class MeEndpoints
     private sealed record MeAddressCreateBody(string? full_name, string? phone, string? email, string? address_line1, string? address_line2, string? city, string? state, string? postal_code, string? country, bool? is_default);
     private sealed record MeAddressPatchBody(string? city);
     private sealed record MeSettingsBody(bool? email_notifications, string? theme, string? profile_visibility, bool? notify_promotions, int? items_per_page, Dictionary<string, object>? custom_preferences);
-    private sealed record PaymentMethodCreateBody(int gateway, string? method_type, string? cardholder_name, string? card_brand, string? card_last4, int? card_exp_month, int? card_exp_year, string? display_info, bool? is_default);
+    private sealed record PaymentMethodCreateBody(int gateway, string? method_type, string? cardholder_name, string? card_brand, string? card_last4, int? card_exp_month, int? card_exp_year, string? display_info, bool? is_default, bool? is_active);
     private sealed record PaymentMethodPatchBody(bool? is_default, string? cardholder_name);
     private sealed record MePatchBody(string? first_name, string? last_name, string? phone);
 }

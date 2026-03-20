@@ -37,14 +37,16 @@ public static class SupportEndpoints
         if (!wid.HasValue) return Results.BadRequest();
         var body = await ctx.Request.ReadFromJsonAsync<TicketCreateBody>(ct);
         if (body == null) return Results.BadRequest();
+        if (body.customer <= 0) return Results.BadRequest(new { customer = new[] { "This field is required." } });
         var t = new SupportTicket
         {
             WorkspaceId = wid.Value,
-            CustomerId = body.customer > 0 ? body.customer : null,
+            CustomerId = body.customer,
+            TicketNumber = "TKT-" + Guid.NewGuid().ToString("N")[..10].ToUpperInvariant(),
             Subject = body.subject ?? "",
             Description = body.description ?? "",
             Status = body.status ?? "new",
-            Channel = body.channel ?? "web",
+            Channel = string.IsNullOrEmpty(body.channel) ? "web" : body.channel!,
             CreatedAt = DateTime.UtcNow,
             UpdatedAt = DateTime.UtcNow
         };
@@ -96,7 +98,15 @@ public static class SupportEndpoints
         if (body == null) return Results.BadRequest();
         var userIdClaim = ctx.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value ?? ctx.User.FindFirst("user_id")?.Value;
         int? userId = int.TryParse(userIdClaim, out var uid) ? uid : null;
-        var m = new TicketMessage { TicketId = id, UserId = userId, Body = body.message ?? "", IsInternal = body.is_internal ?? false, CreatedAt = DateTime.UtcNow };
+        var m = new TicketMessage
+        {
+            TicketId = id,
+            UserId = userId,
+            Body = body.message ?? "",
+            IsStaffReply = false,
+            IsInternal = body.is_internal ?? false,
+            CreatedAt = DateTime.UtcNow
+        };
         db.TicketMessages.Add(m);
         await db.SaveChangesAsync(ct);
         return Results.Created($"/api/v1/support/tickets/{id}/messages/", new { id = m.Id, body = m.Body });

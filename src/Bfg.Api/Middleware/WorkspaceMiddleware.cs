@@ -1,3 +1,4 @@
+using System.Security.Claims;
 using Bfg.Core;
 using Bfg.Core.Common;
 using Microsoft.EntityFrameworkCore;
@@ -5,8 +6,7 @@ using Microsoft.EntityFrameworkCore;
 namespace Bfg.Api.Middleware;
 
 /// <summary>
-/// Resolves current workspace from Host or X-Workspace-Id and sets it in HttpContext.
-/// Matches Django bfg.common.middleware.WorkspaceMiddleware.
+/// Resolves current workspace from Host or X-Workspace-Id and sets it in HttpContext (BFG server API behavior).
 /// </summary>
 public class WorkspaceMiddleware
 {
@@ -14,7 +14,7 @@ public class WorkspaceMiddleware
     private const string WorkspaceKey = "Workspace";
     private const string WorkspaceIdKey = "WorkspaceId";
 
-    public static readonly PathString[] SkipPaths = { "/api/docs", "/api/schema", "/api/v1/auth/" };
+    public static readonly PathString[] SkipPaths = { "/api/docs", "/api/schema", "/api/v1/auth" };
 
     public WorkspaceMiddleware(RequestDelegate next) => _next = next;
 
@@ -64,4 +64,12 @@ public class WorkspaceMiddleware
 
     public static int? GetWorkspaceId(HttpContext context) =>
         context.Items[WorkspaceIdKey] as int?;
+
+    /// <summary>Authenticated user id from JWT claims, if present.</summary>
+    public static int? GetCurrentUserId(HttpContext context)
+    {
+        var s = context.User.FindFirst(ClaimTypes.NameIdentifier)?.Value
+            ?? context.User.FindFirst("user_id")?.Value;
+        return int.TryParse(s, out var id) ? id : null;
+    }
 }

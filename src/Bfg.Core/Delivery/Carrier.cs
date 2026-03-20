@@ -10,6 +10,10 @@ public class Carrier
     public string Name { get; set; } = "";
     public string Code { get; set; } = "";
     public string? CarrierType { get; set; }
+    public string Config { get; set; } = "{}";
+    public string TestConfig { get; set; } = "{}";
+    public bool IsTestMode { get; set; }
+    public string TrackingUrlTemplate { get; set; } = "";
     public bool IsActive { get; set; } = true;
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }

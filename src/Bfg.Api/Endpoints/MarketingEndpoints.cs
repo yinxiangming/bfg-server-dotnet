@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Bfg.Api.Infrastructure;
 using Bfg.Api.Middleware;
 using Bfg.Core;
@@ -28,7 +29,8 @@ public static class MarketingEndpoints
         group.MapPost("/gift-cards/", CreateGiftCard);
         group.MapPost("/gift-cards/{id:int}/redeem/", RedeemGiftCard);
 
-        // /api/v1/promo/* aliases for marketing resources
+        group.MapPost("/campaign-displays/", CreateCampaignDisplay);
+
         var promo = app.MapGroup("/api/v1/promo").WithTags("Promo").RequireAuthorization();
         promo.MapGet("/vouchers", ListVouchers);
         promo.MapPost("/vouchers/", CreateVoucher);
@@ -36,11 +38,24 @@ public static class MarketingEndpoints
         promo.MapPost("/campaigns/", CreateCampaign);
     }
 
+    private static string Trunc(string? s, int maxLen) =>
+        string.IsNullOrEmpty(s) ? "" : (s.Length <= maxLen ? s : s[..maxLen]);
+
     private static async Task<IResult> ListVouchers(BfgDbContext db, HttpContext ctx, CancellationToken ct)
     {
         var wid = WorkspaceMiddleware.GetWorkspaceId(ctx);
-        var list = await db.Vouchers.AsNoTracking().Where(v => !wid.HasValue || v.WorkspaceId == wid.Value)
-            .Select(v => new { id = v.Id, code = v.Code, discount_type = v.DiscountType, discount_value = v.DiscountValue.ToString("F2"), is_active = v.IsActive })
+        var list = await db.Vouchers.AsNoTracking()
+            .Where(v => !wid.HasValue || v.WorkspaceId == wid.Value)
+            .Join(db.DiscountRules.AsNoTracking(), v => v.DiscountRuleId, r => r.Id, (v, r) => new { v, r })
+            .Where(x => !wid.HasValue || x.r.WorkspaceId == wid.Value)
+            .Select(x => new
+            {
+                id = x.v.Id,
+                code = x.v.Code,
+                discount_type = x.r.DiscountType,
+                discount_value = x.r.DiscountValue.ToString("F2"),
+                is_active = x.v.IsActive
+            })
             .ToListAsync(ct);
         return Results.Ok(new { count = list.Count, next = (string?)null, previous = (string?)null, results = list });
     }
@@ -50,20 +65,35 @@ public static class MarketingEndpoints
         var wid = WorkspaceMiddleware.GetWorkspaceId(ctx);
         if (!wid.HasValue) return Results.BadRequest();
         var body = await ctx.Request.ReadFromJsonAsync<VoucherCreateBody>(ct);
-        if (body == null) return Results.BadRequest();
-        var v = new Bfg.Core.Promo.Voucher
+        if (body == null || body.discount_rule_id <= 0) return Results.BadRequest();
+        var rule = await db.DiscountRules.AsNoTracking()
+            .FirstOrDefaultAsync(r => r.Id == body.discount_rule_id && r.WorkspaceId == wid.Value, ct);
+        if (rule == null) return Results.BadRequest();
+        var now = DateTime.UtcNow;
+        var v = new Voucher
         {
             WorkspaceId = wid.Value,
+            DiscountRuleId = body.discount_rule_id,
             Code = body.code ?? "",
-            DiscountType = body.discount_type ?? "percentage",
-            DiscountValue = decimal.TryParse(body.discount_value, out var dv) ? dv : 0,
-            IsActive = body.is_active ?? true,
+            Description = "",
+            TimesUsed = 0,
+            ValidFrom = now,
+            ValidUntil = null,
             UsageLimit = body.usage_limit,
-            CreatedAt = DateTime.UtcNow
+            IsActive = body.is_active ?? true,
+            CreatedAt = now,
+            UpdatedAt = now
         };
         db.Vouchers.Add(v);
         await db.SaveChangesAsync(ct);
-        return Results.Created("/api/v1/promo/vouchers/", new { id = v.Id, code = v.Code, discount_type = v.DiscountType, discount_value = v.DiscountValue.ToString("F2"), is_active = v.IsActive });
+        return Results.Created("/api/v1/promo/vouchers/", new
+        {
+            id = v.Id,
+            code = v.Code,
+            discount_type = rule.DiscountType,
+            discount_value = rule.DiscountValue.ToString("F2"),
+            is_active = v.IsActive
+        });
     }
 
     private static async Task<IResult> ListCampaigns(BfgDbContext db, HttpContext ctx, HttpRequest req, CancellationToken ct)
@@ -83,18 +113,27 @@ public static class MarketingEndpoints
         if (!wid.HasValue) return Results.BadRequest();
         var body = await ctx.Request.ReadFromJsonAsync<CampaignCreateBody>(ct);
         if (body == null) return Results.BadRequest();
+        var now = DateTime.UtcNow;
         var c = new Campaign
         {
             WorkspaceId = wid.Value,
             Name = body.name ?? "",
-            CampaignType = body.campaign_type ?? "email",
-            Description = body.description,
-            StartDate = body.start_date,
+            CampaignType = Trunc(body.campaign_type ?? "email", 20),
+            Description = body.description ?? "",
+            StartDate = body.start_date ?? now,
             EndDate = body.end_date,
             Budget = decimal.TryParse(body.budget, out var b) ? b : null,
+            UtmSource = Trunc(body.utm_source, 100),
+            UtmMedium = Trunc(body.utm_medium, 100),
+            UtmCampaign = Trunc(body.utm_campaign, 100),
             IsActive = body.is_active ?? true,
-            CreatedAt = DateTime.UtcNow,
-            UpdatedAt = DateTime.UtcNow
+            RequiresParticipation = body.requires_participation ?? false,
+            MinParticipants = body.min_participants,
+            MaxParticipants = body.max_participants,
+            PromoDisplayType = Trunc(body.promo_display_type, 50),
+            Config = "{}",
+            CreatedAt = now,
+            UpdatedAt = now
         };
         db.Campaigns.Add(c);
         await db.SaveChangesAsync(ct);
@@ -139,21 +178,42 @@ public static class MarketingEndpoints
         if (!wid.HasValue) return Results.BadRequest();
         var body = await ctx.Request.ReadFromJsonAsync<DiscountRuleCreateBody>(ct);
         if (body == null) return Results.BadRequest();
+        var discountVal = decimal.TryParse(body.discount_value, out var v) ? v : 0;
+        if (discountVal < 0)
+            return Results.BadRequest(new { discount_value = new[] { "Negative discount_value is not allowed." } });
+
+        var entitledJson = "[]";
+        if (body.product_ids is { Count: > 0 })
+            entitledJson = JsonSerializer.Serialize(body.product_ids);
+        var prerequisiteJson = "[]";
+        if (body.category_ids is { Count: > 0 })
+            prerequisiteJson = JsonSerializer.Serialize(body.category_ids);
+
+        var displayLabel = body.display_label ?? body.name ?? "";
+        var cfgParts = new Dictionary<string, object>();
+        if (body.product_ids is { Count: > 0 }) cfgParts["product_ids"] = body.product_ids;
+        if (body.category_ids is { Count: > 0 }) cfgParts["category_ids"] = body.category_ids;
+        var configJson = cfgParts.Count > 0 ? JsonSerializer.Serialize(cfgParts) : "{}";
+        var now = DateTime.UtcNow;
         var r = new DiscountRule
         {
             WorkspaceId = wid.Value,
             Name = body.name ?? "",
-            DiscountType = body.discount_type ?? "percentage",
-            DiscountValue = decimal.TryParse(body.discount_value, out var v) ? v : 0,
-            ApplyTo = body.apply_to ?? "order",
+            DiscountType = Trunc(body.discount_type ?? "percentage", 20),
+            DiscountValue = discountVal,
+            ApplyTo = Trunc(body.apply_to ?? "order", 20),
             MaximumDiscount = body.maximum_discount != null && decimal.TryParse(body.maximum_discount, out var md) ? md : null,
             MinimumPurchase = body.minimum_purchase != null && decimal.TryParse(body.minimum_purchase, out var mp) ? mp : null,
-            DisplayLabel = body.display_label,
+            Config = configJson,
+            PrerequisiteProductIds = prerequisiteJson,
+            EntitledProductIds = entitledJson,
+            AllocationMethod = Trunc("across", 20),
+            DisplayLabel = displayLabel,
+            IsGroupBuy = false,
             IsActive = body.is_active ?? true,
             ValidFrom = body.valid_from,
             ValidUntil = body.valid_until,
-            CreatedAt = DateTime.UtcNow,
-            UpdatedAt = DateTime.UtcNow
+            CreatedAt = now
         };
         db.DiscountRules.Add(r);
         await db.SaveChangesAsync(ct);
@@ -163,7 +223,7 @@ public static class MarketingEndpoints
     private static async Task<IResult> ListCoupons(BfgDbContext db, HttpContext ctx, bool? is_active, CancellationToken ct)
     {
         var wid = WorkspaceMiddleware.GetWorkspaceId(ctx);
-        var query = db.Vouchers.AsNoTracking().Where(v => (!wid.HasValue || v.WorkspaceId == wid.Value) && v.DiscountRuleId != null);
+        var query = db.Vouchers.AsNoTracking().Where(v => !wid.HasValue || v.WorkspaceId == wid.Value);
         if (is_active.HasValue) query = query.Where(v => v.IsActive == is_active.Value);
         var list = await query.Select(v => new { id = v.Id, code = v.Code, discount_rule_id = v.DiscountRuleId, valid_from = v.ValidFrom, valid_until = v.ValidUntil, is_active = v.IsActive, usage_limit = v.UsageLimit }).ToListAsync(ct);
         return Results.Ok(list);
@@ -175,25 +235,25 @@ public static class MarketingEndpoints
         if (!wid.HasValue) return Results.BadRequest();
         var body = await ctx.Request.ReadFromJsonAsync<CouponCreateBody>(ct);
         if (body == null || body.discount_rule_id <= 0) return Results.BadRequest();
+        var now = DateTime.UtcNow;
         var v = new Voucher
         {
             WorkspaceId = wid.Value,
             DiscountRuleId = body.discount_rule_id,
             CampaignId = body.campaign_id,
             Code = body.code ?? "",
-            Description = body.description,
-            DiscountValue = 0,
-            ValidFrom = body.valid_from,
+            Description = body.description ?? "",
+            TimesUsed = 0,
+            ValidFrom = body.valid_from ?? now,
             ValidUntil = body.valid_until,
             UsageLimit = body.usage_limit,
             UsageLimitPerCustomer = body.usage_limit_per_customer,
             IsActive = body.is_active ?? true,
-            CreatedAt = DateTime.UtcNow,
-            UpdatedAt = DateTime.UtcNow
+            CreatedAt = now,
+            UpdatedAt = now
         };
         db.Vouchers.Add(v);
         await db.SaveChangesAsync(ct);
-        var dr = await db.DiscountRules.AsNoTracking().FirstOrDefaultAsync(r => r.Id == body.discount_rule_id, ct);
         return Results.Created("/api/v1/marketing/coupons/", new { id = v.Id, code = v.Code, discount_rule = new { id = v.DiscountRuleId } });
     }
 
@@ -223,6 +283,10 @@ public static class MarketingEndpoints
         if (body == null || body.currency <= 0) return Results.BadRequest();
         var initial = decimal.TryParse(body.initial_value, out var iv) ? iv : 0;
         var balance = decimal.TryParse(body.balance, out var bv) ? bv : initial;
+        if (initial < 0) return Results.BadRequest(new { initial_value = new[] { "Must be non-negative." } });
+        if (balance < 0) return Results.BadRequest(new { balance = new[] { "Must be non-negative." } });
+        if (balance > initial) return Results.BadRequest(new { balance = new[] { "Balance cannot exceed initial_value." } });
+        var now = DateTime.UtcNow;
         var g = new GiftCard
         {
             WorkspaceId = wid.Value,
@@ -231,13 +295,47 @@ public static class MarketingEndpoints
             InitialValue = initial,
             Balance = balance,
             Code = "GC-" + Guid.NewGuid().ToString("N")[..10].ToUpperInvariant(),
+            Note = "",
             IsActive = body.is_active ?? true,
-            CreatedAt = DateTime.UtcNow,
-            UpdatedAt = DateTime.UtcNow
+            CreatedAt = now,
+            UpdatedAt = now
         };
         db.GiftCards.Add(g);
         await db.SaveChangesAsync(ct);
         return Results.Created("/api/v1/marketing/gift-cards/", new { id = g.Id, code = g.Code, initial_value = g.InitialValue.ToString("F2"), balance = g.Balance.ToString("F2") });
+    }
+
+    private static async Task<IResult> CreateCampaignDisplay(BfgDbContext db, HttpContext ctx, CancellationToken ct)
+    {
+        var wid = WorkspaceMiddleware.GetWorkspaceId(ctx);
+        if (!wid.HasValue) return Results.BadRequest();
+        var body = await ctx.Request.ReadFromJsonAsync<CampaignDisplayCreateBody>(ct);
+        if (body == null || body.campaign is null or <= 0) return Results.BadRequest();
+        var camp = await db.Campaigns.AsNoTracking()
+            .FirstOrDefaultAsync(c => c.Id == body.campaign && c.WorkspaceId == wid.Value, ct);
+        if (camp == null) return Results.BadRequest();
+        var now = DateTime.UtcNow;
+        var title = string.IsNullOrEmpty(body.title) ? camp.Name : body.title!;
+        var d = new CampaignDisplay
+        {
+            DisplayType = Trunc(body.display_type ?? "slide", 30),
+            SortOrder = body.order ?? 0,
+            Title = title,
+            Subtitle = body.subtitle ?? "",
+            Image = null,
+            LinkUrl = body.link_url ?? "",
+            LinkTarget = "_self",
+            Rules = "{}",
+            IsActive = body.is_active ?? true,
+            CampaignId = body.campaign,
+            PostId = null,
+            WorkspaceId = wid.Value,
+            CreatedAt = now,
+            UpdatedAt = now
+        };
+        db.CampaignDisplays.Add(d);
+        await db.SaveChangesAsync(ct);
+        return Results.Created("/api/v1/marketing/campaign-displays/", new { id = d.Id, campaign = d.CampaignId, display_type = d.DisplayType });
     }
 
     private static async Task<IResult> RedeemGiftCard(BfgDbContext db, HttpContext ctx, int id, CancellationToken ct)
@@ -254,12 +352,45 @@ public static class MarketingEndpoints
         return Results.Ok(new { success = true, redeemed_amount = amount.ToString("F2"), remaining_balance = g.Balance.ToString("F2"), gift_card = new { balance = g.Balance.ToString("F2") } });
     }
 
-    private sealed record CampaignCreateBody(string? name, string? campaign_type, string? description, DateTime? start_date, DateTime? end_date, string? budget, bool? is_active);
+    private sealed record CampaignDisplayCreateBody(int? campaign, string? display_type, int? order, string? link_url, bool? is_active, string? title, string? subtitle);
+
+    private sealed record CampaignCreateBody(
+        string? name,
+        string? campaign_type,
+        string? description,
+        DateTime? start_date,
+        DateTime? end_date,
+        string? budget,
+        bool? is_active,
+        string? utm_source,
+        string? utm_medium,
+        string? utm_campaign,
+        bool? requires_participation,
+        int? min_participants,
+        int? max_participants,
+        string? promo_display_type);
+
     private sealed record CampaignPatchBody(string? name, string? budget);
-    private sealed record DiscountRuleCreateBody(string? name, string? discount_type, string? discount_value, string? apply_to, string? maximum_discount, string? minimum_purchase, string? display_label, bool? is_active, DateTime? valid_from, DateTime? valid_until);
+
+    private sealed class DiscountRuleCreateBody
+    {
+        public string? name { get; set; }
+        public string? discount_type { get; set; }
+        public string? discount_value { get; set; }
+        public string? apply_to { get; set; }
+        public string? maximum_discount { get; set; }
+        public string? minimum_purchase { get; set; }
+        public string? display_label { get; set; }
+        public bool? is_active { get; set; }
+        public DateTime? valid_from { get; set; }
+        public DateTime? valid_until { get; set; }
+        public List<int>? product_ids { get; set; }
+        public List<int>? category_ids { get; set; }
+    }
+
     private sealed record CouponCreateBody(int discount_rule_id, int? campaign_id, string? code, string? description, DateTime? valid_from, DateTime? valid_until, int? usage_limit, int? usage_limit_per_customer, bool? is_active);
     private sealed record CouponPatchBody(int? usage_limit);
     private sealed record GiftCardCreateBody(string? initial_value, string? balance, int currency, int? customer, bool? is_active);
     private sealed record RedeemBody(string? amount);
-    private sealed record VoucherCreateBody(string? code, string? discount_type, string? discount_value, bool? is_active, int? usage_limit);
+    private sealed record VoucherCreateBody(string? code, int discount_rule_id, bool? is_active, int? usage_limit);
 }

@@ -13,10 +13,10 @@ public class Variant
     public decimal? Price { get; set; }
     public decimal? ComparePrice { get; set; }
     public int StockQuantity { get; set; }
+    public decimal? Weight { get; set; }
     public bool IsActive { get; set; } = true;
+    /// <summary>Django column name: order</summary>
     public int SortOrder { get; set; } = 100;
-    public DateTime CreatedAt { get; set; }
-    public DateTime UpdatedAt { get; set; }
 
     public Product Product { get; set; } = null!;
 }

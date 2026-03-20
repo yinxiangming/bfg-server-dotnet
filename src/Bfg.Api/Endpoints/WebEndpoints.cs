@@ -1,3 +1,4 @@
+using Bfg.Api.Auth;
 using Bfg.Api.Middleware;
 using Bfg.Core;
 using Bfg.Core.Common;
@@ -70,19 +71,23 @@ public static class WebEndpoints
     {
         var wid = WorkspaceMiddleware.GetWorkspaceId(ctx);
         if (!wid.HasValue) return Results.BadRequest();
+        if (!AuthUser.TryGetUserId(ctx, out var userId)) return Results.Unauthorized();
         var body = await ctx.Request.ReadFromJsonAsync<PageCreateBody>(ct);
         if (body == null) return Results.BadRequest();
+        var status = body.status ?? "published";
+        var now = DateTime.UtcNow;
         var p = new Page
         {
             WorkspaceId = wid.Value,
             Title = body.title ?? "",
             Slug = body.slug ?? "",
             Content = body.content ?? "",
-            Status = body.status ?? "published",
+            Status = status,
             Language = body.language ?? "en",
-            CreatedById = 0,
-            CreatedAt = DateTime.UtcNow,
-            UpdatedAt = DateTime.UtcNow
+            CreatedById = userId,
+            PublishedAt = status == "published" ? now : null,
+            CreatedAt = now,
+            UpdatedAt = now
         };
         db.WebPages.Add(p);
         await db.SaveChangesAsync(ct);
@@ -102,20 +107,24 @@ public static class WebEndpoints
         var wid = WorkspaceMiddleware.GetWorkspaceId(ctx);
         if (!wid.HasValue) return Results.BadRequest();
 
-        string fileName, fileType, fileUrl;
+        string fileName, fileUrl, responseFileType, responseMimeType;
         // Support both JSON and multipart
         if (ctx.Request.ContentType != null && ctx.Request.ContentType.Contains("multipart"))
         {
             var file = ctx.Request.Form.Files.GetFile("file");
             fileName = ctx.Request.Form["file_name"].ToString() ?? file?.FileName ?? "upload";
-            fileType = ctx.Request.Form["file_type"].ToString() ?? ctx.Request.Form["mime_type"].ToString() ?? "image";
+            var ft = ctx.Request.Form["file_type"].ToString();
+            var mt = ctx.Request.Form["mime_type"].ToString();
+            responseFileType = !string.IsNullOrEmpty(ft) ? ft : (!string.IsNullOrEmpty(mt) ? mt : "image");
+            responseMimeType = !string.IsNullOrEmpty(mt) ? mt : responseFileType;
             fileUrl = ctx.Request.Form["file_url"].ToString() ?? "";
         }
         else
         {
             var body = await ctx.Request.ReadFromJsonAsync<MediaCreateBody>(ct);
             fileName = body?.file_name ?? "upload";
-            fileType = body?.mime_type ?? body?.file_type ?? "image";
+            responseFileType = body?.file_type ?? body?.mime_type ?? "image";
+            responseMimeType = body?.mime_type ?? responseFileType;
             fileUrl = body?.file_url ?? "";
         }
 
@@ -123,13 +132,13 @@ public static class WebEndpoints
         {
             WorkspaceId = wid.Value,
             File = fileUrl.Length > 0 ? fileUrl : fileName,
-            MediaType = fileType,
+            MediaType = responseFileType,
             CreatedAt = DateTime.UtcNow,
             UpdatedAt = DateTime.UtcNow
         };
         db.Media.Add(media);
         await db.SaveChangesAsync(ct);
-        return Results.Created("/api/v1/web/media/", new { id = media.Id, file_name = fileName, file_url = fileUrl, mime_type = fileType });
+        return Results.Created("/api/v1/web/media/", new { id = media.Id, file_name = fileName, file_url = fileUrl, file_type = responseFileType, mime_type = responseMimeType });
     }
 
     private sealed record MediaCreateBody(string? file_name, string? file_url, string? mime_type, string? file_type);

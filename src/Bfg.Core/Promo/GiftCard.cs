@@ -12,6 +12,7 @@ public class GiftCard
     public decimal InitialValue { get; set; }
     public decimal Balance { get; set; }
     public string Code { get; set; } = "";
+    public string Note { get; set; } = "";
     public bool IsActive { get; set; } = true;
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }

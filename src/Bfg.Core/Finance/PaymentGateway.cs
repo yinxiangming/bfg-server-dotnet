@@ -10,6 +10,7 @@ public class PaymentGateway
     public string Name { get; set; } = "";
     public string GatewayType { get; set; } = "custom";
     public string Config { get; set; } = "{}";
+    public string TestConfig { get; set; } = "{}";
     public bool IsActive { get; set; } = true;
     public bool IsTestMode { get; set; }
     public DateTime CreatedAt { get; set; }

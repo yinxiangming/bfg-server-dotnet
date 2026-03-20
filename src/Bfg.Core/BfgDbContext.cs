@@ -21,6 +21,7 @@ public class BfgDbContext : DbContext
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
     public DbSet<Media> Media => Set<Media>();
     public DbSet<MediaLink> MediaLinks => Set<MediaLink>();
+    public DbSet<DjangoContentType> DjangoContentTypes => Set<DjangoContentType>();
     public DbSet<Customer> Customers => Set<Customer>();
     public DbSet<CustomerSegment> CustomerSegments => Set<CustomerSegment>();
     public DbSet<CustomerTag> CustomerTags => Set<CustomerTag>();
@@ -40,6 +41,8 @@ public class BfgDbContext : DbContext
     public DbSet<ProductCategory> ProductCategories => Set<ProductCategory>();
     public DbSet<ProductCategoryProduct> ProductCategoryProducts => Set<ProductCategoryProduct>();
     public DbSet<Variant> Variants => Set<Variant>();
+    public DbSet<SalesChannel> SalesChannels => Set<SalesChannel>();
+    public DbSet<ProductChannelListing> ProductChannelListings => Set<ProductChannelListing>();
     public DbSet<Store> Stores => Set<Store>();
     public DbSet<StoreWarehouse> StoreWarehouses => Set<StoreWarehouse>();
     public DbSet<Cart> Carts => Set<Cart>();
@@ -52,6 +55,11 @@ public class BfgDbContext : DbContext
     public DbSet<FreightService> FreightServices => Set<FreightService>();
     public DbSet<DeliveryZone> DeliveryZones => Set<DeliveryZone>();
     public DbSet<Shipment> Shipments => Set<Shipment>();
+    public DbSet<FreightStatus> FreightStatuses => Set<FreightStatus>();
+    public DbSet<PackageTemplate> PackageTemplates => Set<PackageTemplate>();
+    public DbSet<DeliveryPackage> DeliveryPackages => Set<DeliveryPackage>();
+    public DbSet<Consignment> Consignments => Set<Consignment>();
+    public DbSet<ConsignmentOrder> ConsignmentOrders => Set<ConsignmentOrder>();
 
     public DbSet<Currency> Currencies => Set<Currency>();
     public DbSet<PaymentGateway> PaymentGateways => Set<PaymentGateway>();
@@ -70,6 +78,11 @@ public class BfgDbContext : DbContext
     public DbSet<Campaign> Campaigns => Set<Campaign>();
     public DbSet<DiscountRule> DiscountRules => Set<DiscountRule>();
     public DbSet<GiftCard> GiftCards => Set<GiftCard>();
+    public DbSet<CampaignDisplay> CampaignDisplays => Set<CampaignDisplay>();
+
+    public DbSet<ProductTag> ProductTags => Set<ProductTag>();
+    public DbSet<ProductTagProduct> ProductTagProducts => Set<ProductTagProduct>();
+    public DbSet<ProductReview> ProductReviews => Set<ProductReview>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -81,6 +94,8 @@ public class BfgDbContext : DbContext
         modelBuilder.Entity<AuditLog>().ToTable("common_auditlog");
         modelBuilder.Entity<Media>().ToTable("common_media");
         modelBuilder.Entity<MediaLink>().ToTable("common_medialink");
+        modelBuilder.Entity<DjangoContentType>().ToTable("django_content_type");
+        modelBuilder.Entity<DjangoContentType>().HasNoKey();
         modelBuilder.Entity<Customer>().ToTable("common_customer");
         modelBuilder.Entity<CustomerSegment>().ToTable("common_customersegment");
         modelBuilder.Entity<CustomerTag>().ToTable("common_customertag");
@@ -94,48 +109,187 @@ public class BfgDbContext : DbContext
         modelBuilder.Entity<Theme>().ToTable("web_theme");
         modelBuilder.Entity<Language>().ToTable("web_language");
         modelBuilder.Entity<Page>().ToTable("web_page");
+        modelBuilder.Entity<Page>()
+            .Property(p => p.SortOrder)
+            .HasColumnName("order");
+        modelBuilder.Entity<Page>()
+            .Property(p => p.Blocks)
+            .HasColumnType("json");
         modelBuilder.Entity<Inquiry>().ToTable("web_inquiry");
 
         modelBuilder.Entity<Product>().ToTable("shop_product");
         modelBuilder.Entity<ProductCategory>().ToTable("shop_productcategory");
         modelBuilder.Entity<ProductCategoryProduct>().ToTable("shop_product_categories").HasKey(x => new { x.ProductId, x.ProductCategoryId });
+        // Django M2M FK column is productcategory_id, not product_category_id
+        modelBuilder.Entity<ProductCategoryProduct>()
+            .Property(x => x.ProductCategoryId)
+            .HasColumnName("productcategory_id");
+        modelBuilder.Entity<ProductCategory>()
+            .Property(x => x.SortOrder)
+            .HasColumnName("order");
+        modelBuilder.Entity<ProductCategory>()
+            .Property(x => x.Rules)
+            .HasColumnType("json");
         modelBuilder.Entity<Variant>().ToTable("shop_productvariant");
+        modelBuilder.Entity<Variant>()
+            .Property(v => v.SortOrder)
+            .HasColumnName("order");
+        modelBuilder.Entity<Variant>()
+            .Property(v => v.Options)
+            .HasColumnType("json");
+        modelBuilder.Entity<SalesChannel>().ToTable("shop_saleschannel");
+        modelBuilder.Entity<SalesChannel>()
+            .Property(s => s.Config)
+            .HasColumnType("json");
+        modelBuilder.Entity<ProductChannelListing>().ToTable("shop_productchannellisting");
+        modelBuilder.Entity<ProductChannelListing>()
+            .HasIndex(l => new { l.ProductId, l.ChannelId })
+            .IsUnique();
         modelBuilder.Entity<Store>().ToTable("shop_store");
         modelBuilder.Entity<StoreWarehouse>().ToTable("shop_store_warehouses").HasKey(x => new { x.StoreId, x.WarehouseId });
         modelBuilder.Entity<Cart>().ToTable("shop_cart");
         modelBuilder.Entity<CartItem>().ToTable("shop_cartitem");
+        modelBuilder.Entity<CartItem>()
+            .Property(i => i.UnitPrice)
+            .HasColumnName("price");
         modelBuilder.Entity<Order>().ToTable("shop_order");
+        modelBuilder.Entity<Order>()
+            .Property(o => o.TotalAmount)
+            .HasColumnName("total");
+        // Django TextField may be NOT NULL in DB without server default — always persist empty string.
+        modelBuilder.Entity<Order>()
+            .Property(o => o.CustomerNote)
+            .IsRequired()
+            .HasDefaultValue("");
+        modelBuilder.Entity<Order>()
+            .Property(o => o.AdminNote)
+            .IsRequired()
+            .HasDefaultValue("");
         modelBuilder.Entity<OrderItem>().ToTable("shop_orderitem");
+        modelBuilder.Entity<OrderItem>()
+            .Property(i => i.UnitPrice)
+            .HasColumnName("price");
+        modelBuilder.Entity<OrderItem>()
+            .Property(i => i.TotalPrice)
+            .HasColumnName("subtotal");
+        // Django shop.OrderItem has no created_at column
+        modelBuilder.Entity<OrderItem>().Ignore(i => i.CreatedAt);
 
         modelBuilder.Entity<Warehouse>().ToTable("delivery_warehouse");
         modelBuilder.Entity<Carrier>().ToTable("delivery_carrier");
+        modelBuilder.Entity<Carrier>().Property(c => c.Config).HasColumnType("json");
+        modelBuilder.Entity<Carrier>().Property(c => c.TestConfig).HasColumnType("json");
         modelBuilder.Entity<FreightService>().ToTable("delivery_freightservice");
+        modelBuilder.Entity<FreightService>().Property(f => f.Config).HasColumnType("json");
+        modelBuilder.Entity<FreightService>().Property(f => f.SortOrder).HasColumnName("order");
         modelBuilder.Entity<DeliveryZone>().ToTable("delivery_deliveryzone");
         modelBuilder.Entity<Shipment>().ToTable("delivery_shipment");
+
+        modelBuilder.Entity<FreightStatus>().ToTable("delivery_freightstatus");
+        modelBuilder.Entity<FreightStatus>()
+            .Property(f => f.SortOrder)
+            .HasColumnName("order");
+        modelBuilder.Entity<PackageTemplate>().ToTable("delivery_packagetemplate");
+        modelBuilder.Entity<PackageTemplate>()
+            .Property(t => t.SortOrder)
+            .HasColumnName("order");
+        modelBuilder.Entity<DeliveryPackage>().ToTable("delivery_package");
+        modelBuilder.Entity<Consignment>().ToTable("delivery_consignment");
+        modelBuilder.Entity<ConsignmentOrder>().ToTable("delivery_consignment_orders");
 
         modelBuilder.Entity<Currency>().ToTable("finance_currency");
         modelBuilder.Entity<PaymentGateway>().ToTable("finance_paymentgateway");
         modelBuilder.Entity<Payment>().ToTable("finance_payment");
+        modelBuilder.Entity<Payment>()
+            .Property(p => p.GatewayResponse)
+            .HasColumnType("json");
+        modelBuilder.Entity<PaymentGateway>()
+            .Property(g => g.Config)
+            .HasColumnType("json");
+        modelBuilder.Entity<PaymentGateway>()
+            .Property(g => g.TestConfig)
+            .HasColumnType("json");
         modelBuilder.Entity<PaymentMethod>().ToTable("finance_paymentmethod");
         modelBuilder.Entity<Invoice>().ToTable("finance_invoice");
+        modelBuilder.Entity<Invoice>()
+            .Property(i => i.TotalAmount)
+            .HasColumnName("total");
+        modelBuilder.Entity<Invoice>()
+            .Property(i => i.IssueDate)
+            .HasColumnName("issue_date")
+            .HasColumnType("date");
+        modelBuilder.Entity<Invoice>()
+            .Property(i => i.DueDate)
+            .HasColumnName("due_date")
+            .HasColumnType("date");
+        modelBuilder.Entity<Invoice>()
+            .Property(i => i.PaidDate)
+            .HasColumnName("paid_date")
+            .HasColumnType("date");
+
+        modelBuilder.Entity<SupportTicket>()
+            .Property(t => t.RelatedOrderId)
+            .HasColumnName("related_order_id");
+        modelBuilder.Entity<TicketMessage>()
+            .Property(m => m.Body)
+            .HasColumnName("message");
+        modelBuilder.Entity<TicketMessage>()
+            .Property(m => m.UserId)
+            .HasColumnName("sender_id");
+        modelBuilder.Entity<TicketMessage>()
+            .Property(m => m.IsStaffReply)
+            .HasColumnName("is_staff_reply");
 
         modelBuilder.Entity<SupportTicket>().ToTable("support_supportticket");
         modelBuilder.Entity<TicketMessage>().ToTable("support_ticketmessage");
 
         modelBuilder.Entity<InboxMessage>().ToTable("inbox_message");
         modelBuilder.Entity<MessageTemplate>().ToTable("inbox_messagetemplate");
+        modelBuilder.Entity<MessageTemplate>()
+            .Property(t => t.AvailableVariables)
+            .HasColumnType("json");
         modelBuilder.Entity<Notification>().ToTable("inbox_notification");
 
-        modelBuilder.Entity<Voucher>().ToTable("marketing_voucher");
+        modelBuilder.Entity<Voucher>().ToTable("marketing_coupon");
+        modelBuilder.Entity<Voucher>()
+            .Property(v => v.TimesUsed)
+            .HasColumnName("times_used");
         modelBuilder.Entity<Campaign>().ToTable("marketing_campaign");
+        modelBuilder.Entity<Campaign>()
+            .Property(c => c.Config)
+            .HasColumnType("json");
         modelBuilder.Entity<DiscountRule>().ToTable("marketing_discountrule");
+        modelBuilder.Entity<DiscountRule>()
+            .Property(r => r.Config)
+            .HasColumnType("json");
+        modelBuilder.Entity<DiscountRule>()
+            .Property(r => r.PrerequisiteProductIds)
+            .HasColumnType("json");
+        modelBuilder.Entity<DiscountRule>()
+            .Property(r => r.EntitledProductIds)
+            .HasColumnType("json");
         modelBuilder.Entity<GiftCard>().ToTable("marketing_giftcard");
+        modelBuilder.Entity<CampaignDisplay>().ToTable("marketing_campaigndisplay");
+        modelBuilder.Entity<CampaignDisplay>()
+            .Property(d => d.SortOrder)
+            .HasColumnName("order");
+        modelBuilder.Entity<CampaignDisplay>()
+            .Property(d => d.Rules)
+            .HasColumnType("json");
+
+        modelBuilder.Entity<ProductTag>().ToTable("shop_producttag");
+        modelBuilder.Entity<ProductTagProduct>().ToTable("shop_product_tags");
+        modelBuilder.Entity<ProductTagProduct>()
+            .Property(x => x.ProductTagId)
+            .HasColumnName("producttag_id");
+
+        modelBuilder.Entity<ProductReview>().ToTable("shop_productreview");
+        modelBuilder.Entity<ProductReview>()
+            .Property(r => r.Images)
+            .HasColumnType("json");
 
         // Column names: Django uses snake_case. EF default is PascalCase; Npgsql can use snake_case via convention.
         // Configure key FKs to use snake_case so migrations match Django.
-        modelBuilder.Entity<User>()
-            .Property(u => u.DefaultWorkspaceId)
-            .HasColumnName("default_workspace_id");
         modelBuilder.Entity<Address>()
             .Property(a => a.WorkspaceId)
             .HasColumnName("workspace_id");

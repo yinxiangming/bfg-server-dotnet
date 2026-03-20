@@ -41,12 +41,16 @@ public static class InboxEndpoints
         if (!wid.HasValue) return Results.BadRequest();
         var body = await ctx.Request.ReadFromJsonAsync<MessageCreateBody>(ct);
         if (body == null) return Results.BadRequest();
+        var msgType = body.message_type ?? "notification";
+        if (msgType.Length > 20) msgType = msgType[..20];
         var m = new InboxMessage
         {
             WorkspaceId = wid.Value,
             Subject = body.subject ?? "",
             Message = body.message ?? "",
-            MessageType = body.message_type ?? "notification",
+            MessageType = msgType,
+            ActionUrl = "",
+            ActionLabel = "",
             SendEmail = body.send_email ?? false,
             SendSms = body.send_sms ?? false,
             SendPush = body.send_push ?? false,
@@ -68,7 +72,8 @@ public static class InboxEndpoints
     private static async Task<IResult> ListTemplates(BfgDbContext db, HttpContext ctx, CancellationToken ct)
     {
         var wid = WorkspaceMiddleware.GetWorkspaceId(ctx);
-        var query = db.MessageTemplates.AsNoTracking().Where(t => t.WorkspaceId == null || t.WorkspaceId == wid);
+        var query = db.MessageTemplates.AsNoTracking()
+            .Where(t => !wid.HasValue || t.WorkspaceId == null || t.WorkspaceId == wid.Value);
         var list = await query.Select(t => new { id = t.Id, name = t.Name, code = t.Code, event_type = t.Event, language = t.Language, is_active = t.IsActive }).ToListAsync(ct);
         return Results.Ok(list);
     }
@@ -88,22 +93,29 @@ public static class InboxEndpoints
             EmailEnabled = body.email_enabled ?? false,
             EmailSubject = body.email_subject ?? "",
             EmailBody = body.email_body ?? "",
+            EmailHtmlBody = "",
             AppMessageEnabled = body.app_message_enabled ?? false,
             AppMessageTitle = body.app_message_title ?? "",
             AppMessageBody = body.app_message_body ?? "",
+            SmsEnabled = false,
+            SmsBody = "",
+            PushEnabled = false,
+            PushTitle = "",
+            PushBody = "",
+            AvailableVariables = "[]",
             IsActive = body.is_active ?? true,
             CreatedAt = DateTime.UtcNow,
             UpdatedAt = DateTime.UtcNow
         };
         db.MessageTemplates.Add(t);
         await db.SaveChangesAsync(ct);
-        return Results.Created("/api/v1/inbox/templates/", new { id = t.Id, name = t.Name, code = t.Code, event_type = t.Event });
+        return Results.Created("/api/v1/inbox/templates/", new { id = t.Id, name = t.Name, code = t.Code, Event = t.Event });
     }
 
     private static async Task<IResult> GetTemplate(BfgDbContext db, HttpContext ctx, int id, CancellationToken ct)
     {
         var wid = WorkspaceMiddleware.GetWorkspaceId(ctx);
-        var t = await db.MessageTemplates.AsNoTracking().FirstOrDefaultAsync(x => x.Id == id && (x.WorkspaceId == null || x.WorkspaceId == wid), ct);
+        var t = await db.MessageTemplates.AsNoTracking().FirstOrDefaultAsync(x => x.Id == id && (!wid.HasValue || x.WorkspaceId == null || x.WorkspaceId == wid.Value), ct);
         if (t == null) return Results.NotFound();
         return Results.Ok(new { id = t.Id, name = t.Name, code = t.Code, event_type = t.Event, app_message_body = t.AppMessageBody });
     }
@@ -111,7 +123,7 @@ public static class InboxEndpoints
     private static async Task<IResult> PatchTemplate(BfgDbContext db, HttpContext ctx, int id, CancellationToken ct)
     {
         var wid = WorkspaceMiddleware.GetWorkspaceId(ctx);
-        var t = await db.MessageTemplates.FirstOrDefaultAsync(x => x.Id == id && (x.WorkspaceId == null || x.WorkspaceId == wid), ct);
+        var t = await db.MessageTemplates.FirstOrDefaultAsync(x => x.Id == id && (!wid.HasValue || x.WorkspaceId == null || x.WorkspaceId == wid.Value), ct);
         if (t == null) return Results.NotFound();
         var body = await ctx.Request.ReadFromJsonAsync<TemplatePatchBody>(ct);
         if (body?.app_message_body != null) { t.AppMessageBody = body.app_message_body; t.UpdatedAt = DateTime.UtcNow; await db.SaveChangesAsync(ct); }

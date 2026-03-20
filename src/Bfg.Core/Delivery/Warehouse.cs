@@ -15,6 +15,10 @@ public class Warehouse
     public string State { get; set; } = "";
     public string PostalCode { get; set; } = "";
     public string Country { get; set; } = "";
+    public decimal? Latitude { get; set; }
+    public decimal? Longitude { get; set; }
+    public string Phone { get; set; } = "";
+    public string Email { get; set; } = "";
     public bool IsActive { get; set; } = true;
     public bool IsDefault { get; set; }
     public DateTime CreatedAt { get; set; }

@@ -16,7 +16,9 @@ public class Order
     public decimal TotalAmount { get; set; }
     public int? ShippingAddressId { get; set; }
     public int? BillingAddressId { get; set; }
-    public string? CustomerNote { get; set; }
+    /// <summary>Django TextField blank=True but DB column is NOT NULL in some deployments — use empty string.</summary>
+    public string CustomerNote { get; set; } = "";
+    public string AdminNote { get; set; } = "";
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
 }

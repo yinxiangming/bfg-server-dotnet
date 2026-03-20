@@ -1,20 +1,31 @@
 using System.Text;
+using System.Text.Json;
 using Bfg.Api.Configuration;
 using Bfg.Api.Endpoints;
 using Bfg.Api.Middleware;
 using Bfg.Api.Services;
 using Bfg.Core;
 using DotNetEnv;
+using EFCore.NamingConventions;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Pomelo.EntityFrameworkCore.MySql.Infrastructure;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
+using System.Text.Json.Serialization;
 
-// Load .env from project root or current dir (like Django's load_dotenv); env vars override .env
-Env.TraversePath().Load();
+// Load .env without overwriting vars already set (shell/CI DATABASE_URL must win over repo .env).
+Env.NoClobber().TraversePath().Load();
 
 var builder = WebApplication.CreateBuilder(args);
+
+builder.Services.ConfigureHttpJsonOptions(o =>
+{
+    o.SerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower;
+    o.SerializerOptions.DictionaryKeyPolicy = JsonNamingPolicy.SnakeCaseLower;
+    // E2E clients assert presence of false/null fields (e.g. is_default, rating).
+    o.SerializerOptions.DefaultIgnoreCondition = JsonIgnoreCondition.Never;
+});
 
 builder.Services.Configure<AppOptions>(opts =>
 {
@@ -25,9 +36,13 @@ builder.Services.Configure<JwtOptions>(builder.Configuration.GetSection(JwtOptio
 
 var conn = builder.Configuration.GetDatabaseConnectionString();
 if (!string.IsNullOrEmpty(conn))
-    builder.Services.AddDbContext<BfgDbContext>(o => o.UseMySql(conn, ServerVersion.Parse("8.0.21"), b => b.MigrationsAssembly("Bfg.Api")));
+    builder.Services.AddDbContext<BfgDbContext>(o =>
+        o.UseMySql(conn, ServerVersion.Parse("8.0.21"), b => b.MigrationsAssembly("Bfg.Api"))
+            .UseSnakeCaseNamingConvention());
 
 builder.Services.AddScoped<JwtService>();
+builder.Services.AddScoped<CartService>();
+builder.Services.AddScoped<OrderCheckoutService>();
 
 var jwtOpts = builder.Configuration.GetSection(JwtOptions.SectionName).Get<JwtOptions>();
 var secretKey = jwtOpts?.SecretKey;
@@ -52,7 +67,7 @@ builder.Services.AddAuthorization();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(c =>
 {
-    c.SwaggerDoc("v1", new OpenApiInfo { Title = "BFG Framework API", Description = "BFG API compatible with Django DRF (src/server).", Version = "1.0.0" });
+    c.SwaggerDoc("v1", new OpenApiInfo { Title = "BFG Framework API", Description = "BFG server API (routes and payloads aligned with the canonical BFG implementation).", Version = "1.0.0" });
     c.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme { Name = "Authorization", In = ParameterLocation.Header, Type = SecuritySchemeType.ApiKey });
     c.AddSecurityRequirement(new OpenApiSecurityRequirement { { new OpenApiSecurityScheme { Reference = new OpenApiReference { Type = ReferenceType.SecurityScheme, Id = "Bearer" } }, Array.Empty<string>() } });
     // Resolve duplicate method+path (e.g. GET /api/v1/me vs GET /api/v1/me/) due to trailing-slash normalization
@@ -63,18 +78,8 @@ var app = builder.Build();
 
 app.UseSwagger(c => c.RouteTemplate = "api/schema/{documentName}/swagger.json");
 app.UseSwaggerUI(c => { c.SwaggerEndpoint("/api/schema/v1/swagger.json", "BFG API v1"); c.RoutePrefix = "api/docs"; });
-app.UseHttpsRedirection();
-
-// Handle Django-style trailing slashes: redirect /foo/ → /foo
-app.Use(async (ctx, next) =>
-{
-    var path = ctx.Request.Path.Value;
-    if (path != null && path.Length > 1 && path.EndsWith("/"))
-    {
-        ctx.Request.Path = path.TrimEnd('/');
-    }
-    await next();
-});
+// E2E and local dev hit HTTP only (e.g. :3002); avoid redirecting to HTTPS.
+// Do not strip trailing slashes: routes are registered with Django-style /.../ paths.
 
 app.UseMiddleware<WorkspaceMiddleware>();
 app.UseAuthentication();

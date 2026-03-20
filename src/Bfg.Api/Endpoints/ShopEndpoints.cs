@@ -1,7 +1,10 @@
+using System.Text.Json;
 using Bfg.Api.Infrastructure;
 using Bfg.Api.Middleware;
 using Bfg.Api.Services;
 using Bfg.Core;
+using Bfg.Core.Common;
+using Bfg.Core.Delivery;
 using Bfg.Core.Shop;
 using Microsoft.EntityFrameworkCore;
 
@@ -21,6 +24,7 @@ public static class ShopEndpoints
 
         group.MapGet("/products", ListProducts);
         group.MapPost("/products/", CreateProduct);
+        group.MapPost("/products/tags/", CreateProductTag);
         group.MapGet("/products/{id:int}", GetProduct);
         group.MapPatch("/products/{id:int}", PatchProduct);
         group.MapDelete("/products/{id:int}", DeleteProduct);
@@ -29,6 +33,12 @@ public static class ShopEndpoints
         group.MapPost("/variants/", CreateVariant);
         group.MapGet("/variants/{id:int}", GetVariant);
         group.MapPatch("/variants/{id:int}", PatchVariant);
+
+        group.MapPost("/product-media/", CreateProductMedia);
+
+        group.MapGet("/sales-channels", ListSalesChannels);
+        group.MapPost("/sales-channels/", CreateSalesChannel);
+        group.MapPost("/sales-channels/{id:int}/add_product/", SalesChannelAddProduct);
 
         group.MapGet("/stores", ListStores);
         group.MapPost("/stores/", CreateStore);
@@ -44,9 +54,9 @@ public static class ShopEndpoints
         group.MapPost("/carts/clear/", CartClear);
         group.MapPost("/carts/checkout/", CartCheckout);
 
-        group.MapGet("/orders", ListOrders);
+        group.MapGet("/orders/", ListOrders);
         group.MapPost("/orders/", CreateOrder);
-        group.MapGet("/orders/{id:int}", GetOrder);
+        group.MapGet("/orders/{id:int}/", GetOrder);
         group.MapPatch("/orders/{id:int}", PatchOrder);
         group.MapPost("/orders/{id:int}/update_status/", OrderUpdateStatus);
         group.MapPost("/orders/{id:int}/cancel/", OrderCancel);
@@ -57,6 +67,11 @@ public static class ShopEndpoints
         group.MapGet("/order-items", ListOrderItems);
         group.MapPost("/order-items/", CreateOrderItem);
         group.MapGet("/order-items/{id:int}", GetOrderItem);
+
+        group.MapPost("/order-packages/", CreateOrderPackage);
+        group.MapPost("/order-packages/calculate_shipping/", CalculateOrderPackagesShipping);
+        group.MapPost("/order-packages/update_order_shipping/", UpdateOrderShippingFromPackages);
+        group.MapGet("/returns/", () => Results.Ok(Array.Empty<object>()));
     }
 
     private static async Task<IResult> ListCategories(BfgDbContext db, HttpContext ctx, HttpRequest req, CancellationToken ct)
@@ -76,7 +91,17 @@ public static class ShopEndpoints
         if (!wid.HasValue) return Results.BadRequest();
         var body = await ctx.Request.ReadFromJsonAsync<CategoryCreateBody>(ct);
         if (body == null) return Results.BadRequest();
-        var c = new ProductCategory { WorkspaceId = wid.Value, Name = body.name ?? "", Slug = body.slug ?? "", Language = body.language ?? "en", ParentId = body.parent, IsActive = true, SortOrder = 0, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow };
+        var c = new ProductCategory
+        {
+            WorkspaceId = wid.Value,
+            Name = body.name ?? "",
+            Slug = body.slug ?? "",
+            Description = "",
+            Language = body.language ?? "en",
+            ParentId = body.parent,
+            IsActive = true,
+            SortOrder = 100
+        };
         db.ProductCategories.Add(c);
         await db.SaveChangesAsync(ct);
         return Results.Created("/api/v1/shop/categories/", new { id = c.Id, name = c.Name, slug = c.Slug, language = c.Language });
@@ -97,7 +122,6 @@ public static class ShopEndpoints
         if (c == null) return Results.NotFound();
         var body = await ctx.Request.ReadFromJsonAsync<CategoryPatchBody>(ct);
         if (body?.name != null) c.Name = body.name;
-        c.UpdatedAt = DateTime.UtcNow;
         await db.SaveChangesAsync(ct);
         return Results.Ok(new { id = c.Id, name = c.Name, slug = c.Slug });
     }
@@ -172,6 +196,7 @@ public static class ShopEndpoints
             Name = body.name ?? "",
             Slug = slug,
             Sku = body.sku ?? "",
+            Barcode = "",
             Description = body.description ?? "",
             ShortDescription = body.short_description ?? "",
             Price = price,
@@ -179,6 +204,12 @@ public static class ShopEndpoints
             Language = language,
             TrackInventory = body.track_inventory ?? true,
             StockQuantity = body.stock_quantity ?? 0,
+            LowStockThreshold = 0,
+            RequiresShipping = true,
+            IsSubscription = false,
+            MetaTitle = "",
+            MetaDescription = "",
+            Condition = "new",
             IsActive = body.is_active ?? true,
             IsFeatured = body.is_featured ?? false,
             CreatedAt = DateTime.UtcNow,
@@ -192,7 +223,25 @@ public static class ShopEndpoints
                 db.ProductCategoryProducts.Add(new ProductCategoryProduct { ProductId = prod.Id, ProductCategoryId = cid });
             await db.SaveChangesAsync(ct);
         }
+        if (body.tag_ids is { Count: > 0 })
+        {
+            foreach (var tid in body.tag_ids)
+                db.ProductTagProducts.Add(new ProductTagProduct { ProductId = prod.Id, ProductTagId = tid });
+            await db.SaveChangesAsync(ct);
+        }
         return Results.Created("/api/v1/shop/products/", new { id = prod.Id, workspace = prod.WorkspaceId, name = prod.Name, slug = prod.Slug, sku = prod.Sku, description = prod.Description, short_description = prod.ShortDescription, price = prod.Price.ToString("F2"), compare_at_price = prod.ComparePrice?.ToString("F2"), category_ids = body.category_ids ?? new List<int>(), is_active = prod.IsActive, language = prod.Language, created_at = prod.CreatedAt });
+    }
+
+    private static async Task<IResult> CreateProductTag(BfgDbContext db, HttpContext ctx, CancellationToken ct)
+    {
+        var wid = WorkspaceMiddleware.GetWorkspaceId(ctx);
+        if (!wid.HasValue) return Results.BadRequest();
+        var body = await ctx.Request.ReadFromJsonAsync<ProductTagCreateBody>(ct);
+        if (body == null || string.IsNullOrWhiteSpace(body.slug)) return Results.BadRequest();
+        var t = new ProductTag { WorkspaceId = wid.Value, Name = body.name ?? "", Slug = body.slug, Language = body.language ?? "en" };
+        db.ProductTags.Add(t);
+        await db.SaveChangesAsync(ct);
+        return Results.Created("/api/v1/shop/products/tags/", new { id = t.Id, name = t.Name, slug = t.Slug, language = t.Language });
     }
 
     private static async Task<IResult> GetProduct(BfgDbContext db, HttpContext ctx, int id, CancellationToken ct)
@@ -253,22 +302,21 @@ public static class ShopEndpoints
     {
         var wid = WorkspaceMiddleware.GetWorkspaceId(ctx);
         if (!wid.HasValue) return Results.BadRequest();
-        var body = await ctx.Request.ReadFromJsonAsync<VariantCreateBody>(ct);
-        if (body == null || body.product <= 0) return Results.BadRequest();
-        var prod = await db.Products.AsNoTracking().FirstOrDefaultAsync(p => p.Id == body.product && p.WorkspaceId == wid.Value, ct);
+        var body = await ctx.Request.ReadFromJsonAsync<VariantCreateRequest>(ct);
+        if (body == null || body.Product <= 0) return Results.BadRequest();
+        var prod = await db.Products.AsNoTracking().FirstOrDefaultAsync(p => p.Id == body.Product && p.WorkspaceId == wid.Value, ct);
         if (prod == null) return Results.NotFound();
-        var price = body.price != null && decimal.TryParse(body.price, out var pv) ? pv : (decimal?)null;
+        var price = body.Price != null && decimal.TryParse(body.Price, out var pv) ? pv : (decimal?)null;
         var v = new Variant
         {
-            ProductId = body.product,
-            Sku = body.sku ?? "",
-            Name = body.name ?? "",
-            Options = body.options != null ? System.Text.Json.JsonSerializer.Serialize(body.options) : "{}",
+            ProductId = body.Product,
+            Sku = body.Sku ?? "",
+            Name = body.Name ?? "",
+            Options = SerializeVariantOptionsJson(body.Options),
             Price = price ?? prod.Price,
-            StockQuantity = body.stock_quantity ?? 0,
+            StockQuantity = body.StockQuantity ?? 0,
             IsActive = true,
-            CreatedAt = DateTime.UtcNow,
-            UpdatedAt = DateTime.UtcNow
+            SortOrder = 100
         };
         db.Variants.Add(v);
         await db.SaveChangesAsync(ct);
@@ -287,8 +335,161 @@ public static class ShopEndpoints
         var v = await db.Variants.FirstOrDefaultAsync(x => x.Id == id, ct);
         if (v == null) return Results.NotFound();
         var body = await ctx.Request.ReadFromJsonAsync<VariantPatchBody>(ct);
-        if (body != null) { v.UpdatedAt = DateTime.UtcNow; await db.SaveChangesAsync(ct); }
+        if (body != null) await db.SaveChangesAsync(ct);
         return Results.Ok(new { id = v.Id });
+    }
+
+    private static async Task<IResult> ListSalesChannels(BfgDbContext db, HttpContext ctx, CancellationToken ct)
+    {
+        var wid = WorkspaceMiddleware.GetWorkspaceId(ctx);
+        var query = db.SalesChannels.AsNoTracking();
+        if (wid.HasValue) query = query.Where(s => s.WorkspaceId == wid.Value);
+        var list = await query.OrderBy(s => s.Name)
+            .Select(s => new
+            {
+                id = s.Id,
+                name = s.Name,
+                code = s.Code,
+                channel_type = s.ChannelType,
+                is_active = s.IsActive,
+                is_default = s.IsDefault
+            })
+            .ToListAsync(ct);
+        return Results.Ok(list);
+    }
+
+    private static async Task<IResult> CreateSalesChannel(BfgDbContext db, HttpContext ctx, CancellationToken ct)
+    {
+        var wid = WorkspaceMiddleware.GetWorkspaceId(ctx);
+        if (!wid.HasValue) return Results.BadRequest();
+        var body = await ctx.Request.ReadFromJsonAsync<SalesChannelCreateBody>(ct);
+        if (body == null || string.IsNullOrWhiteSpace(body.name) || string.IsNullOrWhiteSpace(body.code))
+            return Results.BadRequest();
+        var now = DateTime.UtcNow;
+        var ch = new SalesChannel
+        {
+            WorkspaceId = wid.Value,
+            Name = body.name,
+            Code = body.code,
+            ChannelType = string.IsNullOrWhiteSpace(body.channel_type) ? "custom" : body.channel_type!,
+            Description = body.description ?? "",
+            IsActive = body.is_active ?? true,
+            IsDefault = body.is_default ?? false,
+            CreatedAt = now,
+            UpdatedAt = now
+        };
+        db.SalesChannels.Add(ch);
+        await db.SaveChangesAsync(ct);
+        return Results.Created("/api/v1/shop/sales-channels/", new
+        {
+            id = ch.Id,
+            name = ch.Name,
+            code = ch.Code,
+            channel_type = ch.ChannelType,
+            is_active = ch.IsActive,
+            is_default = ch.IsDefault
+        });
+    }
+
+    private static async Task<IResult> SalesChannelAddProduct(BfgDbContext db, HttpContext ctx, int id, CancellationToken ct)
+    {
+        var wid = WorkspaceMiddleware.GetWorkspaceId(ctx);
+        if (!wid.HasValue) return Results.BadRequest();
+        var body = await ctx.Request.ReadFromJsonAsync<SalesChannelAddProductBody>(ct);
+        if (body?.product_id is not int pid || pid <= 0)
+            return Results.BadRequest(new { detail = "product_id is required" });
+        var channel = await db.SalesChannels.AsNoTracking()
+            .FirstOrDefaultAsync(c => c.Id == id && c.WorkspaceId == wid.Value, ct);
+        if (channel == null) return Results.NotFound();
+        var product = await db.Products.AsNoTracking()
+            .FirstOrDefaultAsync(p => p.Id == pid && p.WorkspaceId == wid.Value, ct);
+        if (product == null) return Results.NotFound(new { detail = "Product not found" });
+        var existing = await db.ProductChannelListings
+            .FirstOrDefaultAsync(l => l.ChannelId == id && l.ProductId == pid, ct);
+        if (existing != null)
+            return Results.Ok(new { success = true, created = false, product_id = product.Id, product_name = product.Name });
+        db.ProductChannelListings.Add(new ProductChannelListing
+        {
+            ChannelId = id,
+            ProductId = pid,
+            CreatedAt = DateTime.UtcNow
+        });
+        await db.SaveChangesAsync(ct);
+        return Results.Ok(new { success = true, created = true, product_id = product.Id, product_name = product.Name });
+    }
+
+    private static async Task<IResult> CreateProductMedia(BfgDbContext db, HttpContext ctx, CancellationToken ct)
+    {
+        var wid = WorkspaceMiddleware.GetWorkspaceId(ctx);
+        if (!wid.HasValue) return Results.BadRequest();
+        if (ctx.Request.ContentType == null || !ctx.Request.ContentType.Contains("multipart", StringComparison.OrdinalIgnoreCase))
+            return Results.BadRequest(new { detail = "multipart required" });
+        var form = ctx.Request.Form;
+        if (!int.TryParse(form["product"].ToString(), out var productId) || productId <= 0)
+            return Results.BadRequest(new { detail = "product is required" });
+        var product = await db.Products.AsNoTracking()
+            .FirstOrDefaultAsync(p => p.Id == productId && p.WorkspaceId == wid.Value, ct);
+        if (product == null) return Results.NotFound(new { detail = "Product not found" });
+        var contentTypeId = await db.DjangoContentTypes.AsNoTracking()
+            .Where(x => x.AppLabel == "shop" && x.Model == "product")
+            .Select(x => x.Id)
+            .FirstOrDefaultAsync(ct);
+        if (contentTypeId == 0)
+            return Results.Json(new { detail = "Content type shop.product missing in django_content_type" }, statusCode: 500);
+        var upload = form.Files.GetFile("file");
+        var mediaType = form["media_type"].ToString();
+        if (string.IsNullOrEmpty(mediaType)) mediaType = "image";
+        var altText = form["alt_text"].ToString() ?? "";
+        var position = int.TryParse(form["position"].ToString(), out var pos) ? pos : 100;
+        var now = DateTime.UtcNow;
+        var storedName = upload != null
+            ? $"media/{wid.Value}/products/{Guid.NewGuid():N}_{upload.FileName}"
+            : $"media/{wid.Value}/products/{Guid.NewGuid():N}.bin";
+        var media = new Media
+        {
+            WorkspaceId = wid.Value,
+            File = storedName,
+            MediaType = mediaType,
+            AltText = altText,
+            CreatedAt = now,
+            UpdatedAt = now
+        };
+        db.Media.Add(media);
+        await db.SaveChangesAsync(ct);
+        var link = await db.MediaLinks.FirstOrDefaultAsync(
+            l => l.MediaId == media.Id && l.ContentTypeId == contentTypeId && l.ObjectId == productId,
+            ct);
+        if (link == null)
+        {
+            link = new MediaLink
+            {
+                MediaId = media.Id,
+                ContentTypeId = contentTypeId,
+                ObjectId = productId,
+                Position = position,
+                Description = "",
+                CreatedAt = now,
+                UpdatedAt = now
+            };
+            db.MediaLinks.Add(link);
+        }
+        else
+        {
+            link.Position = position;
+            link.UpdatedAt = now;
+        }
+        await db.SaveChangesAsync(ct);
+        var filePublic = $"/{storedName}";
+        return Results.Created("/api/v1/shop/product-media/", new
+        {
+            id = link.Id,
+            media_id = media.Id,
+            media_type = media.MediaType,
+            file = filePublic,
+            alt_text = media.AltText,
+            position = link.Position,
+            description = link.Description
+        });
     }
 
     private static async Task<IResult> ListStores(BfgDbContext db, HttpContext ctx, CancellationToken ct)
@@ -312,7 +513,7 @@ public static class ShopEndpoints
         if (!wid.HasValue) return Results.BadRequest();
         var body = await ctx.Request.ReadFromJsonAsync<StoreCreateBody>(ct);
         if (body == null) return Results.BadRequest();
-        var s = new Store { WorkspaceId = wid.Value, Name = body.name ?? "", Code = body.code ?? "", Description = body.description ?? "", IsActive = true, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow };
+        var s = new Store { WorkspaceId = wid.Value, Name = body.name ?? "", Code = body.code ?? "", Description = body.description ?? "", Settings = "{}", IsActive = true, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow };
         db.Stores.Add(s);
         await db.SaveChangesAsync(ct);
         if (body.warehouse_ids != null)
@@ -363,163 +564,112 @@ public static class ShopEndpoints
         return Results.Ok(new { success = true });
     }
 
-    private static async Task<IResult> ListCarts(BfgDbContext db, HttpContext ctx, CancellationToken ct)
+    private static async Task<IResult> ListCarts(CartService carts, HttpContext ctx, CancellationToken ct)
     {
         var wid = WorkspaceMiddleware.GetWorkspaceId(ctx);
-        var query = db.Carts.AsNoTracking().Where(c => !wid.HasValue || c.WorkspaceId == wid.Value);
-        var list = await query.OrderByDescending(c => c.UpdatedAt).Select(c => new { id = c.Id, workspace = c.WorkspaceId, customer = c.CustomerId, status = c.Status }).ToListAsync(ct);
-        return Results.Ok(list);
+        var list = await carts.ListSummariesAsync(wid, ct);
+        return Results.Ok(list.Select(CartJson.ListRow).ToList());
     }
 
-    private static async Task<IResult> GetCart(BfgDbContext db, HttpContext ctx, int id, CancellationToken ct)
+    private static async Task<IResult> GetCart(CartService carts, HttpContext ctx, int id, CancellationToken ct)
     {
         var wid = WorkspaceMiddleware.GetWorkspaceId(ctx);
-        var cart = await db.Carts.AsNoTracking().FirstOrDefaultAsync(c => c.Id == id && (!wid.HasValue || c.WorkspaceId == wid.Value), ct);
-        if (cart == null) return Results.NotFound();
-        var items = await db.CartItems.AsNoTracking().Where(i => i.CartId == id).Select(i => new { id = i.Id, product = i.ProductId, variant = i.VariantId, quantity = i.Quantity, unit_price = i.UnitPrice.ToString("F2"), total_price = (i.Quantity * i.UnitPrice).ToString("F2") }).ToListAsync(ct);
-        var total = await db.CartItems.Where(i => i.CartId == id).SumAsync(i => i.Quantity * i.UnitPrice, ct);
-        return Results.Ok(new { id = cart.Id, workspace = cart.WorkspaceId, customer = cart.CustomerId, status = cart.Status, total = total.ToString("F2"), items });
+        var detail = await carts.GetDetailAsync(id, wid, ct);
+        if (detail == null) return Results.NotFound();
+        return Results.Ok(CartJson.Detail(detail));
     }
 
-    private static async Task<IResult> CreateCart(BfgDbContext db, HttpContext ctx, CancellationToken ct)
+    private static async Task<IResult> CreateCart(CartService carts, HttpContext ctx, CancellationToken ct)
     {
         var wid = WorkspaceMiddleware.GetWorkspaceId(ctx);
         if (!wid.HasValue) return Results.BadRequest();
-        var c = new Cart { WorkspaceId = wid.Value, Status = "active", SessionKey = "", CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow };
-        db.Carts.Add(c);
-        await db.SaveChangesAsync(ct);
-        return Results.Created("/api/v1/shop/carts/", new { id = c.Id, workspace = c.WorkspaceId, customer = (int?)null, status = c.Status, total = "0.00", items = Array.Empty<object>() });
+        var d = await carts.CreateAsync(wid.Value, ct);
+        return Results.Created("/api/v1/shop/carts/", CartJson.Detail(d));
     }
 
-    private static async Task<IResult> CartAddItem(BfgDbContext db, HttpContext ctx, CancellationToken ct)
+    private static async Task<IResult> CartAddItem(CartService carts, HttpContext ctx, CancellationToken ct)
     {
         var wid = WorkspaceMiddleware.GetWorkspaceId(ctx);
         if (!wid.HasValue) return Results.BadRequest();
-        var body = await ctx.Request.ReadFromJsonAsync<CartItemBody>(ct);
-        if (body == null || body.product <= 0) return Results.BadRequest();
-        var qty = body.quantity ?? 1;
-        if (qty <= 0) return Results.BadRequest(new { detail = "Quantity must be greater than 0." });
-        if (qty > 10000) return Results.BadRequest(new { detail = "Quantity cannot exceed 10000." });
-        var cart = await db.Carts.FirstOrDefaultAsync(c => c.WorkspaceId == wid.Value && (c.Status == "open" || c.Status == "active"), ct);
-        if (cart == null) { cart = new Cart { WorkspaceId = wid.Value, Status = "active", SessionKey = "", CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow }; db.Carts.Add(cart); await db.SaveChangesAsync(ct); }
-        var prod = await db.Products.AsNoTracking().FirstOrDefaultAsync(p => p.Id == body.product && p.WorkspaceId == wid.Value, ct);
-        if (prod == null) return Results.NotFound();
-        decimal unitPrice = prod.Price;
-        int? variantId = body.variant;
-        if (variantId.HasValue) { var v = await db.Variants.AsNoTracking().FirstOrDefaultAsync(v => v.Id == variantId.Value && v.ProductId == body.product, ct); if (v != null) unitPrice = v.Price ?? prod.Price; }
-        var existing = await db.CartItems.FirstOrDefaultAsync(i => i.CartId == cart.Id && i.ProductId == body.product && i.VariantId == variantId, ct);
-        if (existing != null) { existing.Quantity += qty; existing.UpdatedAt = DateTime.UtcNow; }
-        else db.CartItems.Add(new CartItem { CartId = cart.Id, ProductId = body.product, VariantId = variantId, Quantity = qty, UnitPrice = unitPrice, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow });
-        await db.SaveChangesAsync(ct);
-        var total = await db.CartItems.Where(i => i.CartId == cart.Id).SumAsync(i => i.Quantity * i.UnitPrice, ct);
-        var items = await db.CartItems.AsNoTracking().Where(i => i.CartId == cart.Id).Select(i => new { id = i.Id, product = i.ProductId, variant = i.VariantId, quantity = i.Quantity, unit_price = i.UnitPrice.ToString("F2"), total_price = (i.Quantity * i.UnitPrice).ToString("F2") }).ToListAsync(ct);
-        return Results.Ok(new { id = cart.Id, workspace = cart.WorkspaceId, customer = cart.CustomerId, status = cart.Status, total = total.ToString("F2"), items });
+        JsonDocument doc;
+        try
+        {
+            doc = await JsonDocument.ParseAsync(ctx.Request.Body, cancellationToken: ct);
+        }
+        catch (JsonException)
+        {
+            return Results.BadRequest(new { detail = "Invalid JSON body." });
+        }
+        using (doc)
+        {
+        var root = doc.RootElement;
+        if (!root.TryGetProperty("product", out var pEl) || pEl.ValueKind != JsonValueKind.Number || !pEl.TryGetInt32(out var productId) || productId <= 0)
+            return Results.BadRequest(new { detail = "product is required." });
+        int? variantId = null;
+        if (root.TryGetProperty("variant", out var vEl) && vEl.ValueKind == JsonValueKind.Number && vEl.TryGetInt32(out var vid) && vid > 0)
+            variantId = vid;
+        int qty;
+        if (!root.TryGetProperty("quantity", out var qEl))
+            qty = 1;
+        else if (qEl.ValueKind == JsonValueKind.Number && qEl.TryGetInt32(out qty))
+        {
+            // ok
+        }
+        else
+            return Results.BadRequest(new { detail = "Quantity must be a valid integer." });
+
+        var r = await carts.AddItemAsync(wid.Value, productId, variantId, qty, new CartAddConstraints(1, 10000), ct);
+        if (!r.Success)
+            return r.ErrorCode == "not_found" ? Results.NotFound() : Results.BadRequest(new { detail = r.ErrorMessage });
+        return Results.Ok(CartJson.Detail(r.Detail!));
+        }
     }
 
-    private static async Task<IResult> CartRemoveItem(BfgDbContext db, HttpContext ctx, CancellationToken ct)
+    private static async Task<IResult> CartRemoveItem(CartService carts, HttpContext ctx, CancellationToken ct)
     {
         var body = await ctx.Request.ReadFromJsonAsync<CartRemoveItemBody>(ct);
-        if (body?.item_id <= 0) return Results.BadRequest();
-        var item = await db.CartItems.FirstOrDefaultAsync(i => i.Id == body.item_id, ct);
-        if (item == null) return Results.NotFound();
-        var cartId = item.CartId;
-        db.CartItems.Remove(item);
-        await db.SaveChangesAsync(ct);
-        var cart = await db.Carts.AsNoTracking().FirstOrDefaultAsync(c => c.Id == cartId, ct);
-        var total = await db.CartItems.Where(i => i.CartId == cartId).SumAsync(i => i.Quantity * i.UnitPrice, ct);
-        var items = await db.CartItems.AsNoTracking().Where(i => i.CartId == cartId).Select(i => new { id = i.Id, product = i.ProductId, variant = i.VariantId, quantity = i.Quantity, unit_price = i.UnitPrice.ToString("F2"), total_price = (i.Quantity * i.UnitPrice).ToString("F2") }).ToListAsync(ct);
-        return Results.Ok(new { id = cartId, workspace = cart?.WorkspaceId ?? 0, customer = cart?.CustomerId, status = cart?.Status ?? "active", total = total.ToString("F2"), items });
+        if (body is not { item_id: > 0 }) return Results.BadRequest();
+        var r = await carts.RemoveLineAsync(body.item_id, ct);
+        if (!r.Success) return Results.NotFound();
+        return Results.Ok(CartJson.Detail(r.Detail!));
     }
 
-    private static async Task<IResult> CartClear(BfgDbContext db, HttpContext ctx, CancellationToken ct)
+    private static async Task<IResult> CartClear(CartService carts, HttpContext ctx, CancellationToken ct)
     {
         var wid = WorkspaceMiddleware.GetWorkspaceId(ctx);
-        var cart = await db.Carts.FirstOrDefaultAsync(c => c.WorkspaceId == wid && (c.Status == "open" || c.Status == "active"), ct);
-        if (cart == null) return Results.Ok(new { id = 0, workspace = wid ?? 0, customer = (int?)null, status = "active", items = Array.Empty<object>(), total = "0.00" });
-        var items = await db.CartItems.Where(i => i.CartId == cart.Id).ToListAsync(ct);
-        db.CartItems.RemoveRange(items);
-        await db.SaveChangesAsync(ct);
-        return Results.Ok(new { id = cart.Id, workspace = cart.WorkspaceId, customer = cart.CustomerId, status = cart.Status, items = Array.Empty<object>(), total = "0.00" });
+        if (!wid.HasValue) return Results.BadRequest();
+        var d = await carts.ClearCurrentCartAsync(wid.Value, ct);
+        return Results.Ok(CartJson.ClearedCart(d));
     }
 
-    private static async Task<IResult> CartCheckout(BfgDbContext db, HttpContext ctx, CancellationToken ct)
+    private static async Task<IResult> CartCheckout(OrderCheckoutService checkout, HttpContext ctx, CancellationToken ct)
     {
         var wid = WorkspaceMiddleware.GetWorkspaceId(ctx);
         if (!wid.HasValue) return Results.BadRequest();
         var body = await ctx.Request.ReadFromJsonAsync<CheckoutBody>(ct);
-        if (body == null || body.store <= 0 || body.shipping_address <= 0) return Results.BadRequest(new { detail = "store and shipping_address are required." });
-        var cart = await db.Carts.FirstOrDefaultAsync(c => c.WorkspaceId == wid.Value && (c.Status == "open" || c.Status == "active"), ct);
-        if (cart == null) return Results.BadRequest(new { detail = "Cart is empty." });
-        var cartItems = await db.CartItems.Where(i => i.CartId == cart.Id).ToListAsync(ct);
-        if (!cartItems.Any()) return Results.BadRequest(new { detail = "Cart is empty." });
-        var store = await db.Stores.AsNoTracking().FirstOrDefaultAsync(s => s.Id == body.store && s.WorkspaceId == wid.Value, ct);
-        if (store == null) return Results.NotFound(new { detail = "Store not found." });
-        var customerId = cart.CustomerId ?? await db.Customers.AsNoTracking().Where(c => c.WorkspaceId == wid.Value).Select(c => c.Id).FirstOrDefaultAsync(ct);
-        if (customerId == 0) return Results.BadRequest(new { detail = "Customer required." });
-        var orderNum = await OrderNumberService.GenerateAsync(ord => db.Orders.AnyAsync(o => o.OrderNumber == ord, ct));
-        decimal subtotal = cartItems.Sum(it => it.Quantity * it.UnitPrice);
-        decimal shipping = 0, tax = 0, discount = 0;
-        var order = new Order
+        if (body == null || body.store <= 0 || body.shipping_address <= 0)
+            return Results.BadRequest(new { detail = "store and shipping_address are required." });
+        var uid = WorkspaceMiddleware.GetCurrentUserId(ctx);
+        var r = await checkout.CreateFromCurrentCartAsync(
+            wid.Value,
+            preferredCartId: null,
+            authenticatedUserId: uid,
+            body.store,
+            body.shipping_address,
+            body.billing_address,
+            body.customer_note,
+            body.coupon_code,
+            body.gift_card_code,
+            validateStoreInWorkspace: true,
+            ct);
+        if (!r.Success)
         {
-            WorkspaceId = wid.Value,
-            CustomerId = customerId,
-            StoreId = body.store,
-            OrderNumber = orderNum,
-            Status = "pending",
-            PaymentStatus = "pending",
-            Subtotal = subtotal,
-            ShippingCost = shipping,
-            Tax = tax,
-            Discount = discount,
-            TotalAmount = subtotal + shipping + tax - discount,
-            ShippingAddressId = body.shipping_address,
-            BillingAddressId = body.billing_address ?? body.shipping_address,
-            CustomerNote = body.customer_note,
-            CreatedAt = DateTime.UtcNow,
-            UpdatedAt = DateTime.UtcNow
-        };
-        db.Orders.Add(order);
-        await db.SaveChangesAsync(ct);
-        foreach (var it in cartItems)
-        {
-            var prod = await db.Products.AsNoTracking().FirstOrDefaultAsync(p => p.Id == it.ProductId, ct);
-            var variant = it.VariantId.HasValue ? await db.Variants.AsNoTracking().FirstOrDefaultAsync(v => v.Id == it.VariantId, ct) : null;
-            db.OrderItems.Add(new OrderItem
-            {
-                OrderId = order.Id,
-                ProductId = it.ProductId,
-                VariantId = it.VariantId,
-                ProductName = prod?.Name ?? "",
-                VariantName = variant?.Name ?? "",
-                Sku = variant?.Sku ?? prod?.Sku ?? "",
-                Quantity = it.Quantity,
-                UnitPrice = it.UnitPrice,
-                TotalPrice = it.Quantity * it.UnitPrice,
-                CreatedAt = DateTime.UtcNow
-            });
+            if (r.ErrorCode == "store_not_found")
+                return Results.NotFound(new { detail = r.ErrorMessage });
+            return Results.BadRequest(new { detail = r.ErrorMessage });
         }
-        db.CartItems.RemoveRange(cartItems);
-        await db.SaveChangesAsync(ct);
-        var orderItems = await db.OrderItems.AsNoTracking().Where(i => i.OrderId == order.Id).Select(i => new { id = i.Id, product = i.ProductId, variant = i.VariantId, quantity = i.Quantity, unit_price = i.UnitPrice.ToString("F2"), total_price = i.TotalPrice.ToString("F2") }).ToListAsync(ct);
-        return Results.Created("/api/v1/shop/orders/", new
-        {
-            id = order.Id,
-            order_number = order.OrderNumber,
-            workspace = order.WorkspaceId,
-            customer_id = order.CustomerId,
-            store_id = order.StoreId,
-            status = order.Status,
-            payment_status = order.PaymentStatus,
-            subtotal_amount = order.Subtotal.ToString("F2"),
-            shipping_amount = order.ShippingCost.ToString("F2"),
-            discount_amount = order.Discount.ToString("F2"),
-            total_amount = order.TotalAmount.ToString("F2"),
-            shipping_address_id = order.ShippingAddressId,
-            billing_address_id = order.BillingAddressId,
-            items = orderItems,
-            created_at = order.CreatedAt,
-            updated_at = order.UpdatedAt
-        });
+
+        return Results.Created("/api/v1/shop/orders/", OrderCheckoutJson.CreatedBody(r.Payload!));
     }
 
     private static async Task<IResult> ListOrders(BfgDbContext db, HttpContext ctx, HttpRequest req, CancellationToken ct)
@@ -539,6 +689,15 @@ public static class ShopEndpoints
         if (!wid.HasValue) return Results.BadRequest();
         var body = await ctx.Request.ReadFromJsonAsync<OrderCreateBody>(ct);
         if (body == null || body.customer_id <= 0 || body.store_id <= 0 || body.shipping_address_id <= 0) return Results.BadRequest(new { detail = "customer_id, store_id, shipping_address_id are required." });
+        if (!await db.Customers.AsNoTracking().AnyAsync(c => c.Id == body.customer_id && c.WorkspaceId == wid.Value, ct))
+            return Results.BadRequest(new { detail = "customer_id is not in this workspace." });
+        if (!await db.Stores.AsNoTracking().AnyAsync(s => s.Id == body.store_id && s.WorkspaceId == wid.Value, ct))
+            return Results.BadRequest(new { detail = "store_id is not in this workspace." });
+        var billingId = body.billing_address_id ?? body.shipping_address_id;
+        if (!await db.Addresses.AsNoTracking().AnyAsync(a => a.Id == body.shipping_address_id && a.WorkspaceId == wid.Value, ct))
+            return Results.BadRequest(new { detail = "shipping_address_id is not in this workspace." });
+        if (!await db.Addresses.AsNoTracking().AnyAsync(a => a.Id == billingId && a.WorkspaceId == wid.Value, ct))
+            return Results.BadRequest(new { detail = "billing_address_id is not in this workspace." });
         var orderNum = await OrderNumberService.GenerateAsync(ord => db.Orders.AnyAsync(o => o.OrderNumber == ord, ct));
         var order = new Order
         {
@@ -555,13 +714,15 @@ public static class ShopEndpoints
             TotalAmount = 0,
             ShippingAddressId = body.shipping_address_id,
             BillingAddressId = body.billing_address_id ?? body.shipping_address_id,
+            CustomerNote = "",
+            AdminNote = "",
             CreatedAt = DateTime.UtcNow,
             UpdatedAt = DateTime.UtcNow
         };
         db.Orders.Add(order);
         await db.SaveChangesAsync(ct);
         var items = await db.OrderItems.AsNoTracking().Where(i => i.OrderId == order.Id).Select(i => new { id = i.Id, product = i.ProductId, variant = i.VariantId, quantity = i.Quantity, unit_price = i.UnitPrice.ToString("F2"), total_price = i.TotalPrice.ToString("F2") }).ToListAsync(ct);
-        return Results.Created("/api/v1/shop/orders/", new { id = order.Id, order_number = order.OrderNumber, workspace = order.WorkspaceId, customer_id = order.CustomerId, store_id = order.StoreId, status = order.Status, payment_status = order.PaymentStatus, subtotal_amount = order.Subtotal.ToString("F2"), shipping_amount = order.ShippingCost.ToString("F2"), discount_amount = order.Discount.ToString("F2"), total_amount = order.TotalAmount.ToString("F2"), shipping_address_id = order.ShippingAddressId, billing_address_id = order.BillingAddressId, items, created_at = order.CreatedAt, updated_at = order.UpdatedAt });
+        return Results.Created("/api/v1/shop/orders/", new { id = order.Id, order_number = order.OrderNumber, workspace = order.WorkspaceId, customer_id = order.CustomerId, store_id = order.StoreId, status = order.Status, payment_status = order.PaymentStatus, subtotal = order.Subtotal.ToString("F2"), shipping_cost = order.ShippingCost.ToString("F2"), tax = order.Tax.ToString("F2"), discount = order.Discount.ToString("F2"), total = order.TotalAmount.ToString("F2"), subtotal_amount = order.Subtotal.ToString("F2"), shipping_amount = order.ShippingCost.ToString("F2"), discount_amount = order.Discount.ToString("F2"), total_amount = order.TotalAmount.ToString("F2"), shipping_address_id = order.ShippingAddressId, billing_address_id = order.BillingAddressId, items, created_at = order.CreatedAt, updated_at = order.UpdatedAt });
     }
 
     private static async Task<IResult> GetOrder(BfgDbContext db, HttpContext ctx, int id, CancellationToken ct)
@@ -570,7 +731,8 @@ public static class ShopEndpoints
         var o = await db.Orders.AsNoTracking().FirstOrDefaultAsync(x => x.Id == id && (!wid.HasValue || x.WorkspaceId == wid.Value), ct);
         if (o == null) return Results.NotFound();
         var items = await db.OrderItems.AsNoTracking().Where(i => i.OrderId == id).Select(i => new { id = i.Id, product = i.ProductId, variant = i.VariantId, quantity = i.Quantity, unit_price = i.UnitPrice.ToString("F2"), total_price = i.TotalPrice.ToString("F2") }).ToListAsync(ct);
-        return Results.Ok(new { id = o.Id, order_number = o.OrderNumber, workspace = o.WorkspaceId, customer_id = o.CustomerId, store_id = o.StoreId, status = o.Status, payment_status = o.PaymentStatus, subtotal_amount = o.Subtotal.ToString("F2"), shipping_amount = o.ShippingCost.ToString("F2"), discount_amount = o.Discount.ToString("F2"), total_amount = o.TotalAmount.ToString("F2"), shipping_address_id = o.ShippingAddressId, billing_address_id = o.BillingAddressId, items, created_at = o.CreatedAt, updated_at = o.UpdatedAt, packages = new List<object>() });
+        var packages = await FormatOrderPackagesAsync(db, id, ct);
+        return Results.Ok(new { id = o.Id, order_number = o.OrderNumber, workspace = o.WorkspaceId, customer_id = o.CustomerId, store_id = o.StoreId, status = o.Status, payment_status = o.PaymentStatus, subtotal = o.Subtotal.ToString("F2"), shipping_cost = o.ShippingCost.ToString("F2"), tax = o.Tax.ToString("F2"), discount = o.Discount.ToString("F2"), total = o.TotalAmount.ToString("F2"), subtotal_amount = o.Subtotal.ToString("F2"), shipping_amount = o.ShippingCost.ToString("F2"), discount_amount = o.Discount.ToString("F2"), total_amount = o.TotalAmount.ToString("F2"), shipping_address_id = o.ShippingAddressId, billing_address_id = o.BillingAddressId, items, created_at = o.CreatedAt, updated_at = o.UpdatedAt, packages });
     }
 
     private static async Task<IResult> PatchOrder(BfgDbContext db, HttpContext ctx, int id, CancellationToken ct)
@@ -586,7 +748,7 @@ public static class ShopEndpoints
         o.UpdatedAt = DateTime.UtcNow;
         await db.SaveChangesAsync(ct);
         var items = await db.OrderItems.AsNoTracking().Where(i => i.OrderId == id).Select(i => new { id = i.Id, product = i.ProductId, variant = i.VariantId, quantity = i.Quantity, unit_price = i.UnitPrice.ToString("F2"), total_price = i.TotalPrice.ToString("F2") }).ToListAsync(ct);
-        return Results.Ok(new { id = o.Id, order_number = o.OrderNumber, status = o.Status, payment_status = o.PaymentStatus, subtotal_amount = o.Subtotal.ToString("F2"), shipping_amount = o.ShippingCost.ToString("F2"), total_amount = o.TotalAmount.ToString("F2"), items });
+        return Results.Ok(new { id = o.Id, order_number = o.OrderNumber, status = o.Status, payment_status = o.PaymentStatus, subtotal = o.Subtotal.ToString("F2"), shipping_cost = o.ShippingCost.ToString("F2"), tax = o.Tax.ToString("F2"), discount = o.Discount.ToString("F2"), total = o.TotalAmount.ToString("F2"), subtotal_amount = o.Subtotal.ToString("F2"), shipping_amount = o.ShippingCost.ToString("F2"), discount_amount = o.Discount.ToString("F2"), total_amount = o.TotalAmount.ToString("F2"), items });
     }
 
     private static async Task<IResult> OrderUpdateStatus(BfgDbContext db, HttpContext ctx, int id, CancellationToken ct)
@@ -652,8 +814,7 @@ public static class ShopEndpoints
                 Sku = variant?.Sku ?? prod.Sku,
                 Quantity = qty,
                 UnitPrice = unitPrice,
-                TotalPrice = lineTotal,
-                CreatedAt = DateTime.UtcNow
+                TotalPrice = lineTotal
             });
         }
         order.Subtotal = subtotal;
@@ -664,18 +825,163 @@ public static class ShopEndpoints
         return Results.Ok(new { id = order.Id, order_number = order.OrderNumber, status = order.Status, subtotal_amount = order.Subtotal.ToString("F2"), total_amount = order.TotalAmount.ToString("F2"), items });
     }
 
+    private static async Task<List<object>> FormatOrderPackagesAsync(BfgDbContext db, int orderId, CancellationToken ct)
+    {
+        var rows = await db.DeliveryPackages.AsNoTracking()
+            .Where(p => p.OrderId == orderId)
+            .OrderBy(p => p.Id)
+            .Select(p => new { p.Id, p.OrderId, p.TemplateId, p.Weight, p.PackageNumber, p.StatusId })
+            .ToListAsync(ct);
+        return rows.Select(p => (object)new
+        {
+            id = p.Id,
+            order = p.OrderId,
+            order_id = p.OrderId,
+            template = p.TemplateId,
+            template_id = p.TemplateId,
+            weight = p.Weight?.ToString("F2"),
+            package_number = p.PackageNumber,
+            freight_status = p.StatusId
+        }).ToList();
+    }
+
+    private static async Task<IResult> CreateOrderPackage(BfgDbContext db, HttpContext ctx, CancellationToken ct)
+    {
+        var wid = WorkspaceMiddleware.GetWorkspaceId(ctx);
+        if (!wid.HasValue) return Results.BadRequest();
+        var body = await ctx.Request.ReadFromJsonAsync<OrderPackageCreateBody>(ct);
+        if (body is not { Order: > 0, FreightStatus: > 0 }) return Results.BadRequest(new { detail = "order and freight_status are required." });
+        var st = await db.FreightStatuses.AsNoTracking()
+            .FirstOrDefaultAsync(f => f.Id == body.FreightStatus && f.WorkspaceId == wid.Value, ct);
+        if (st == null) return Results.BadRequest(new { detail = "Invalid freight_status." });
+        var ord = await db.Orders.AsNoTracking().FirstOrDefaultAsync(o => o.Id == body.Order && o.WorkspaceId == wid.Value, ct);
+        if (ord == null) return Results.NotFound();
+        PackageTemplate? tplEntity = null;
+        if (body.Template is int templateId && templateId > 0)
+        {
+            tplEntity = await db.PackageTemplates.AsNoTracking()
+                .FirstOrDefaultAsync(t => t.Id == templateId && t.WorkspaceId == wid.Value, ct);
+            if (tplEntity == null) return Results.BadRequest(new { detail = "Invalid template." });
+        }
+
+        var len = body.Length ?? tplEntity?.Length;
+        var pkgWidth = body.Width ?? tplEntity?.Width;
+        var pkgHeight = body.Height ?? tplEntity?.Height;
+        var vol = (len ?? 0) * (pkgWidth ?? 0) * (pkgHeight ?? 0);
+        var volumetricW = vol > 0 ? vol / 5000m : (decimal?)null;
+        var pkg = new DeliveryPackage
+        {
+            PackageNumber = $"PKG-{body.Order}-{Guid.NewGuid().ToString("N")[..8]}",
+            Weight = body.Weight,
+            Length = len,
+            Width = pkgWidth,
+            Height = pkgHeight,
+            Pieces = body.Pieces ?? 1,
+            State = string.IsNullOrEmpty(st.State) ? "PACKAGE" : st.State,
+            Description = body.Description ?? "",
+            Notes = "",
+            CreatedAt = DateTime.UtcNow,
+            OrderId = body.Order,
+            StatusId = body.FreightStatus,
+            TemplateId = body.Template
+        };
+        db.DeliveryPackages.Add(pkg);
+        await db.SaveChangesAsync(ct);
+        return Results.Created("/api/v1/shop/order-packages/", new
+        {
+            id = pkg.Id,
+            order = body.Order,
+            order_id = body.Order,
+            template = body.Template,
+            template_id = body.Template,
+            weight = pkg.Weight?.ToString("F2"),
+            billing_weight = pkg.Weight?.ToString("F2"),
+            volumetric_weight = volumetricW?.ToString("F2")
+        });
+    }
+
+    private static async Task<IResult> CalculateOrderPackagesShipping(BfgDbContext db, HttpContext ctx, CancellationToken ct)
+    {
+        var wid = WorkspaceMiddleware.GetWorkspaceId(ctx);
+        if (!wid.HasValue) return Results.BadRequest();
+        var body = await ctx.Request.ReadFromJsonAsync<OrderShippingCalcBody>(ct);
+        if (body is not { Order: > 0, FreightServiceId: > 0 }) return Results.BadRequest();
+        var svc = await db.FreightServices.AsNoTracking()
+            .FirstOrDefaultAsync(s => s.Id == body.FreightServiceId && s.WorkspaceId == wid.Value, ct);
+        if (svc == null) return Results.BadRequest();
+        var pkgs = await db.DeliveryPackages.AsNoTracking().Where(p => p.OrderId == body.Order).ToListAsync(ct);
+        var totalWeight = pkgs.Sum(p => p.Weight ?? 0);
+        var shipping = svc.BasePrice + svc.PricePerKg * totalWeight;
+        return Results.Ok(new
+        {
+            total_packages = pkgs.Count,
+            total_billing_weight = totalWeight.ToString("F2"),
+            shipping_cost = shipping.ToString("F2")
+        });
+    }
+
+    private static async Task<IResult> UpdateOrderShippingFromPackages(BfgDbContext db, HttpContext ctx, CancellationToken ct)
+    {
+        var wid = WorkspaceMiddleware.GetWorkspaceId(ctx);
+        if (!wid.HasValue) return Results.BadRequest();
+        var body = await ctx.Request.ReadFromJsonAsync<OrderShippingCalcBody>(ct);
+        if (body is not { Order: > 0, FreightServiceId: > 0 }) return Results.BadRequest();
+        var svc = await db.FreightServices.AsNoTracking()
+            .FirstOrDefaultAsync(s => s.Id == body.FreightServiceId && s.WorkspaceId == wid.Value, ct);
+        if (svc == null) return Results.BadRequest();
+        var order = await db.Orders.FirstOrDefaultAsync(o => o.Id == body.Order && o.WorkspaceId == wid.Value, ct);
+        if (order == null) return Results.NotFound();
+        var pkgs = await db.DeliveryPackages.AsNoTracking().Where(p => p.OrderId == body.Order).ToListAsync(ct);
+        var totalWeight = pkgs.Sum(p => p.Weight ?? 0);
+        var shipping = svc.BasePrice + svc.PricePerKg * totalWeight;
+        order.ShippingCost = shipping;
+        order.TotalAmount = order.Subtotal + order.ShippingCost + order.Tax - order.Discount;
+        order.UpdatedAt = DateTime.UtcNow;
+        await db.SaveChangesAsync(ct);
+        return Results.Ok(new { order_id = body.Order, shipping_cost = shipping.ToString("F2") });
+    }
+
+    private sealed record OrderPackageCreateBody(int Order, int FreightStatus, int? Template, decimal? Length, decimal? Width, decimal? Height, decimal? Weight, int? Pieces, string? Description);
+    private sealed record OrderShippingCalcBody(int Order, int FreightServiceId);
+
     private sealed record CategoryCreateBody(string? name, string? slug, string? language, int? parent);
     private sealed record CategoryPatchBody(string? name);
-    private sealed record ProductCreateBody(string? name, string? slug, string? sku, string? price, string? description, string? short_description, string? compare_at_price, string? language, bool? track_inventory, int? stock_quantity, bool? is_active, bool? is_featured, List<int>? category_ids);
+    private sealed record ProductCreateBody(string? name, string? slug, string? sku, string? price, string? description, string? short_description, string? compare_at_price, string? language, bool? track_inventory, int? stock_quantity, bool? is_active, bool? is_featured, List<int>? category_ids, List<int>? tag_ids);
+    private sealed record ProductTagCreateBody(string? name, string? slug, string? language);
     private sealed record ProductPatchBody(string? name, string? slug, string? sku, string? description, string? short_description, string? price, string? compare_at_price, bool? is_active, string? language, List<int>? category_ids);
-    private sealed record VariantCreateBody(int product, string? sku, string? name, string? price, Dictionary<string, string>? options, int? stock_quantity);
+    private sealed class VariantCreateRequest
+    {
+        public int Product { get; set; }
+        public string? Sku { get; set; }
+        public string? Name { get; set; }
+        public string? Price { get; set; }
+        public JsonElement Options { get; set; }
+        public int? StockQuantity { get; set; }
+    }
+
+    private static string SerializeVariantOptionsJson(JsonElement options)
+    {
+        if (options.ValueKind != JsonValueKind.Object)
+            return "{}";
+        try
+        {
+            var dict = JsonSerializer.Deserialize<Dictionary<string, string>>(options.GetRawText());
+            return dict is { Count: > 0 } ? JsonSerializer.Serialize(dict) : "{}";
+        }
+        catch (JsonException)
+        {
+            return "{}";
+        }
+    }
     private sealed record VariantPatchBody(string? name);
+    private sealed record SalesChannelCreateBody(string? name, string? code, string? channel_type, string? description, bool? is_active, bool? is_default);
+    private sealed record SalesChannelAddProductBody(int? product_id);
     private sealed record StoreCreateBody(string? name, string? code, string? description, List<int>? warehouse_ids);
     private sealed record StorePatchBody(string? name);
     private sealed record StoreWarehousesBody(List<int>? warehouse_ids);
     private sealed record CartItemBody(int product, int? variant, int? quantity);
     private sealed record CartRemoveItemBody(int item_id);
-    private sealed record CheckoutBody(int store, int shipping_address, int? billing_address, string? customer_note);
+    private sealed record CheckoutBody(int store, int shipping_address, int? billing_address, string? customer_note, string? coupon_code = null, string? gift_card_code = null);
     private sealed record OrderCreateBody(int customer_id, int store_id, int shipping_address_id, int? billing_address_id, string? status, string? payment_status);
     private sealed record OrderPatchBody(string? status, string? payment_status, int? shipping_address_id, int? billing_address_id);
     private sealed record OrderUpdateStatusBody(string? status);
@@ -739,7 +1045,7 @@ public static class ShopEndpoints
         {
             OrderId = body.order, ProductId = body.product,
             VariantId = body.variant, Quantity = body.quantity,
-            UnitPrice = unitPrice, TotalPrice = totalPrice, CreatedAt = DateTime.UtcNow
+            UnitPrice = unitPrice, TotalPrice = totalPrice
         };
         db.OrderItems.Add(item);
         order.Subtotal += totalPrice;
