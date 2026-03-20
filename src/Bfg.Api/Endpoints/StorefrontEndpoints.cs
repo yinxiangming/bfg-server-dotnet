@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using System.Text.Json;
+using Bfg.Api.Infrastructure;
 using Bfg.Api.Middleware;
 using Bfg.Api.Services;
 using Bfg.Core;
@@ -316,7 +317,14 @@ public static class StorefrontEndpoints
     private static async Task<IResult> GetCartCurrent(CartService carts, HttpContext ctx, CancellationToken ct)
     {
         var wid = WorkspaceMiddleware.GetWorkspaceId(ctx);
-        var d = await carts.GetCurrentOrEmptyAsync(wid, ct);
+        if (!wid.HasValue)
+        {
+            var empty = new CartDetail(0, 0, null, CartService.StatusOpen, Array.Empty<CartLineDto>(), "0.00");
+            return Results.Ok(CartJson.StorefrontDetail(empty));
+        }
+
+        var sessionKey = StorefrontCartSession.Resolve(ctx);
+        var d = await carts.GetCurrentOrEmptyForStorefrontAsync(wid.Value, sessionKey, ct);
         return Results.Ok(CartJson.StorefrontDetail(d));
     }
 
@@ -328,7 +336,9 @@ public static class StorefrontEndpoints
         if (body is not { Product: > 0 }) return Results.BadRequest();
         var qty = body.Quantity ?? 1;
         if (qty <= 0) return Results.BadRequest();
-        var r = await carts.AddItemAsync(wid.Value, body.Product, body.Variant, qty, new CartAddConstraints(1, null), ct);
+        var sessionKey = StorefrontCartSession.Resolve(ctx);
+        var r = await carts.AddItemForStorefrontAsync(
+            wid.Value, sessionKey, body.Product, body.Variant, qty, new CartAddConstraints(1, null), ct);
         if (!r.Success)
             return r.ErrorCode == "not_found" ? Results.NotFound() : Results.BadRequest(new { detail = r.ErrorMessage });
         return Results.Ok(CartJson.StorefrontDetail(r.Detail!));
@@ -358,7 +368,8 @@ public static class StorefrontEndpoints
         var wid = WorkspaceMiddleware.GetWorkspaceId(ctx);
         if (!wid.HasValue)
             return Results.Ok(new { id = 0, workspace = 0, customer = (int?)null, status = CartService.StatusOpen, items = Array.Empty<object>(), total = "0.00" });
-        var d = await carts.ClearCurrentCartAsync(wid.Value, ct);
+        var sessionKey = StorefrontCartSession.Resolve(ctx);
+        var d = await carts.ClearStorefrontCartAsync(wid.Value, sessionKey, ct);
         return Results.Ok(CartJson.ClearedCart(d));
     }
 
@@ -373,6 +384,7 @@ public static class StorefrontEndpoints
         if (body == null || body.Store <= 0 || body.ShippingAddress <= 0)
             return Results.BadRequest(new { detail = "store and shipping_address are required." });
         var uid = WorkspaceMiddleware.GetCurrentUserId(ctx);
+        var sessionForCart = cartHeader.HasValue ? null : StorefrontCartSession.Resolve(ctx);
         var r = await checkout.CreateFromCurrentCartAsync(
             wid.Value,
             cartHeader,
@@ -384,6 +396,7 @@ public static class StorefrontEndpoints
             body.CouponCode,
             body.GiftCardCode,
             validateStoreInWorkspace: true,
+            storefrontSessionKey: sessionForCart,
             ct);
         if (!r.Success)
         {

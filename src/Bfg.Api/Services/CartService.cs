@@ -39,6 +39,20 @@ public sealed class CartService(BfgDbContext db)
         return await BuildDetailAsync(cart, ct);
     }
 
+    /// <summary>Storefront: cart scoped by session key (anonymous isolation).</summary>
+    public async Task<CartDetail> GetCurrentOrEmptyForStorefrontAsync(int workspaceId, string sessionKey, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(sessionKey))
+            return await GetCurrentOrEmptyAsync(workspaceId, ct);
+        var cart = await db.Carts
+            .Where(c => c.WorkspaceId == workspaceId && c.SessionKey == sessionKey)
+            .OrderByDescending(c => c.UpdatedAt)
+            .FirstOrDefaultAsync(ct);
+        if (cart == null)
+            return new CartDetail(0, workspaceId, null, StatusOpen, Array.Empty<CartLineDto>(), "0.00");
+        return await BuildDetailAsync(cart, ct);
+    }
+
     public async Task<CartDetail> CreateAsync(int workspaceId, CancellationToken ct)
     {
         var c = new Cart { WorkspaceId = workspaceId, SessionKey = "", CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow };
@@ -109,6 +123,82 @@ public sealed class CartService(BfgDbContext db)
         return CartMutationResult.Ok(detail);
     }
 
+    /// <summary>Storefront add_item: uses or creates cart for the given session key.</summary>
+    public async Task<CartMutationResult> AddItemForStorefrontAsync(
+        int workspaceId,
+        string sessionKey,
+        int productId,
+        int? variantId,
+        int quantity,
+        CartAddConstraints constraints,
+        CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(sessionKey))
+            return await AddItemAsync(workspaceId, productId, variantId, quantity, constraints, ct);
+
+        if (quantity < constraints.MinQuantity)
+            return CartMutationResult.Fail("bad_request", $"Quantity must be at least {constraints.MinQuantity}.");
+        if (constraints.MaxQuantity is { } max && quantity > max)
+            return CartMutationResult.Fail("bad_request", $"Quantity cannot exceed {max}.");
+
+        var cart = await db.Carts
+            .Where(c => c.WorkspaceId == workspaceId && c.SessionKey == sessionKey)
+            .OrderByDescending(c => c.UpdatedAt)
+            .FirstOrDefaultAsync(ct);
+        if (cart == null)
+        {
+            cart = new Cart
+            {
+                WorkspaceId = workspaceId,
+                SessionKey = sessionKey,
+                CreatedAt = DateTime.UtcNow,
+                UpdatedAt = DateTime.UtcNow
+            };
+            db.Carts.Add(cart);
+            await db.SaveChangesAsync(ct);
+        }
+
+        var prod = await db.Products.AsNoTracking()
+            .FirstOrDefaultAsync(p => p.Id == productId && p.WorkspaceId == workspaceId, ct);
+        if (prod == null)
+            return CartMutationResult.Fail("not_found", "Product not found.");
+
+        decimal unitPrice = prod.Price;
+        if (variantId.HasValue)
+        {
+            var v = await db.Variants.AsNoTracking()
+                .FirstOrDefaultAsync(v => v.Id == variantId.Value && v.ProductId == productId, ct);
+            if (v != null)
+                unitPrice = v.Price ?? prod.Price;
+        }
+
+        var existing = await db.CartItems.FirstOrDefaultAsync(
+            i => i.CartId == cart.Id && i.ProductId == productId && i.VariantId == variantId, ct);
+        if (existing != null)
+        {
+            existing.Quantity += quantity;
+            existing.UpdatedAt = DateTime.UtcNow;
+        }
+        else
+        {
+            db.CartItems.Add(new CartItem
+            {
+                CartId = cart.Id,
+                ProductId = productId,
+                VariantId = variantId,
+                Quantity = quantity,
+                UnitPrice = unitPrice,
+                CreatedAt = DateTime.UtcNow,
+                UpdatedAt = DateTime.UtcNow
+            });
+        }
+
+        cart.UpdatedAt = DateTime.UtcNow;
+        await db.SaveChangesAsync(ct);
+        var detail = await BuildDetailAsync(cart, ct);
+        return CartMutationResult.Ok(detail);
+    }
+
     public async Task<CartMutationResult> RemoveLineAsync(int lineItemId, CancellationToken ct)
     {
         var item = await db.CartItems.FirstOrDefaultAsync(i => i.Id == lineItemId, ct);
@@ -152,6 +242,24 @@ public sealed class CartService(BfgDbContext db)
             return new CartDetail(0, workspaceId, null, StatusOpen, Array.Empty<CartLineDto>(), "0.00");
         var toRemove = await db.CartItems.Where(i => i.CartId == cart.Id).ToListAsync(ct);
         db.CartItems.RemoveRange(toRemove);
+        await db.SaveChangesAsync(ct);
+        return new CartDetail(cart.Id, cart.WorkspaceId, cart.CustomerId, StatusOpen, Array.Empty<CartLineDto>(), "0.00");
+    }
+
+    /// <summary>Storefront clear: only the cart for this session key.</summary>
+    public async Task<CartDetail> ClearStorefrontCartAsync(int workspaceId, string sessionKey, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(sessionKey))
+            return await ClearCurrentCartAsync(workspaceId, ct);
+        var cart = await db.Carts
+            .Where(c => c.WorkspaceId == workspaceId && c.SessionKey == sessionKey)
+            .OrderByDescending(c => c.UpdatedAt)
+            .FirstOrDefaultAsync(ct);
+        if (cart == null)
+            return new CartDetail(0, workspaceId, null, StatusOpen, Array.Empty<CartLineDto>(), "0.00");
+        var toRemove = await db.CartItems.Where(i => i.CartId == cart.Id).ToListAsync(ct);
+        db.CartItems.RemoveRange(toRemove);
+        cart.UpdatedAt = DateTime.UtcNow;
         await db.SaveChangesAsync(ct);
         return new CartDetail(cart.Id, cart.WorkspaceId, cart.CustomerId, StatusOpen, Array.Empty<CartLineDto>(), "0.00");
     }

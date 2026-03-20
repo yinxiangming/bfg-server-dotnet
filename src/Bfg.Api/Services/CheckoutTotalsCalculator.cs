@@ -78,11 +78,15 @@ public static class CheckoutTotalsCalculator
         if (!string.IsNullOrEmpty(couponTrim))
         {
             var now = DateTime.UtcNow;
-            var candidates = await db.Vouchers.AsNoTracking()
-                .Where(x => x.WorkspaceId == workspaceId && x.IsActive
-                    && x.ValidFrom <= now && (x.ValidUntil == null || x.ValidUntil >= now))
+            // Load active coupons for workspace; filter validity in-memory so MySQL naive datetimes
+            // (Django UTC storage) compare consistently with UtcNow.
+            var rows = await db.Vouchers.AsNoTracking()
+                .Where(x => x.WorkspaceId == workspaceId && x.IsActive)
+                .OrderByDescending(x => x.Id)
                 .ToListAsync(ct);
-            var v = candidates.FirstOrDefault(x => string.Equals(x.Code, couponTrim, StringComparison.OrdinalIgnoreCase));
+            var v = rows.FirstOrDefault(x =>
+                string.Equals((x.Code ?? "").Trim(), couponTrim, StringComparison.OrdinalIgnoreCase)
+                && IsVoucherWithinValidityWindow(x, now));
             if (v == null)
                 throw new CheckoutCalcException("Invalid or expired coupon.");
             var couponRule = await db.DiscountRules.AsNoTracking()
@@ -160,6 +164,34 @@ public static class CheckoutTotalsCalculator
     }
 
     private static decimal Round2(decimal n) => Math.Round(n, 2, MidpointRounding.AwayFromZero);
+
+    private static DateTime NormalizeAsUtc(DateTime dt) => dt.Kind switch
+    {
+        DateTimeKind.Utc => dt,
+        DateTimeKind.Local => dt.ToUniversalTime(),
+        _ => DateTime.SpecifyKind(dt, DateTimeKind.Utc)
+    };
+
+    /// <summary>
+    /// Allow client/API clock skew so coupons created with "now" from the client are not rejected
+    /// when the DB round-trip is slightly behind server UtcNow.
+    /// </summary>
+    private static readonly TimeSpan CouponValidFromClockSkew = TimeSpan.FromMinutes(15);
+
+    private static bool IsVoucherWithinValidityWindow(Voucher v, DateTime utcNow)
+    {
+        var from = NormalizeAsUtc(v.ValidFrom);
+        if (from > utcNow + CouponValidFromClockSkew)
+            return false;
+        if (v.ValidUntil is { } until)
+        {
+            var u = NormalizeAsUtc(until);
+            if (u < utcNow)
+                return false;
+        }
+
+        return true;
+    }
 
     private static RuleCfg ParseRuleConfig(string configRaw)
     {

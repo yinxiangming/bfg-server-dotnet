@@ -20,6 +20,7 @@ public sealed class OrderCheckoutService(BfgDbContext db)
         string? couponCode,
         string? giftCardCode,
         bool validateStoreInWorkspace,
+        string? storefrontSessionKey,
         CancellationToken ct)
     {
         if (validateStoreInWorkspace)
@@ -33,6 +34,14 @@ public sealed class OrderCheckoutService(BfgDbContext db)
         Cart? cart = preferredCartId is int pcid && pcid > 0
             ? await db.Carts.FirstOrDefaultAsync(c => c.Id == pcid && c.WorkspaceId == workspaceId, ct)
             : null;
+        if (cart == null && !string.IsNullOrWhiteSpace(storefrontSessionKey))
+        {
+            cart = await db.Carts.OrderByDescending(c => c.UpdatedAt)
+                .FirstOrDefaultAsync(
+                    c => c.WorkspaceId == workspaceId && c.SessionKey == storefrontSessionKey,
+                    ct);
+        }
+
         if (cart == null)
         {
             cart = await db.Carts.OrderByDescending(c => c.UpdatedAt)

@@ -74,7 +74,7 @@ public static class MarketingEndpoints
         {
             WorkspaceId = wid.Value,
             DiscountRuleId = body.discount_rule_id,
-            Code = body.code ?? "",
+            Code = (body.code ?? "").Trim(),
             Description = "",
             TimesUsed = 0,
             ValidFrom = now,
@@ -236,16 +236,18 @@ public static class MarketingEndpoints
         var body = await ctx.Request.ReadFromJsonAsync<CouponCreateBody>(ct);
         if (body == null || body.discount_rule_id <= 0) return Results.BadRequest();
         var now = DateTime.UtcNow;
+        var validFrom = CoerceCouponValidFrom(body.valid_from, now);
+        var validUntil = body.valid_until.HasValue ? NormalizeToUtc(body.valid_until.Value) : (DateTime?)null;
         var v = new Voucher
         {
             WorkspaceId = wid.Value,
             DiscountRuleId = body.discount_rule_id,
             CampaignId = body.campaign_id,
-            Code = body.code ?? "",
+            Code = (body.code ?? "").Trim(),
             Description = body.description ?? "",
             TimesUsed = 0,
-            ValidFrom = body.valid_from ?? now,
-            ValidUntil = body.valid_until,
+            ValidFrom = validFrom,
+            ValidUntil = validUntil,
             UsageLimit = body.usage_limit,
             UsageLimitPerCustomer = body.usage_limit_per_customer,
             IsActive = body.is_active ?? true,
@@ -389,6 +391,24 @@ public static class MarketingEndpoints
     }
 
     private sealed record CouponCreateBody(int discount_rule_id, int? campaign_id, string? code, string? description, DateTime? valid_from, DateTime? valid_until, int? usage_limit, int? usage_limit_per_customer, bool? is_active);
+
+    private static DateTime NormalizeToUtc(DateTime dt) => dt.Kind switch
+    {
+        DateTimeKind.Utc => dt,
+        DateTimeKind.Local => dt.ToUniversalTime(),
+        _ => DateTime.SpecifyKind(dt, DateTimeKind.Utc)
+    };
+
+    /// <summary>
+    /// Clamp valid_from so checkout never sees "not yet valid" when client clock is ahead of the API host.
+    /// </summary>
+    private static DateTime CoerceCouponValidFrom(DateTime? bodyFrom, DateTime utcNow)
+    {
+        var vf = bodyFrom.HasValue ? NormalizeToUtc(bodyFrom.Value) : utcNow;
+        if (vf > utcNow)
+            vf = utcNow;
+        return vf;
+    }
     private sealed record CouponPatchBody(int? usage_limit);
     private sealed record GiftCardCreateBody(string? initial_value, string? balance, int currency, int? customer, bool? is_active);
     private sealed record RedeemBody(string? amount);

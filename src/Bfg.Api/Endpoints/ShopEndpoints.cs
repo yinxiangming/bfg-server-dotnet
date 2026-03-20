@@ -661,6 +661,7 @@ public static class ShopEndpoints
             body.coupon_code,
             body.gift_card_code,
             validateStoreInWorkspace: true,
+            storefrontSessionKey: null,
             ct);
         if (!r.Success)
         {
@@ -981,7 +982,15 @@ public static class ShopEndpoints
     private sealed record StoreWarehousesBody(List<int>? warehouse_ids);
     private sealed record CartItemBody(int product, int? variant, int? quantity);
     private sealed record CartRemoveItemBody(int item_id);
-    private sealed record CheckoutBody(int store, int shipping_address, int? billing_address, string? customer_note, string? coupon_code = null, string? gift_card_code = null);
+    private sealed class CheckoutBody
+    {
+        public int store { get; set; }
+        public int shipping_address { get; set; }
+        public int? billing_address { get; set; }
+        public string? customer_note { get; set; }
+        public string? coupon_code { get; set; }
+        public string? gift_card_code { get; set; }
+    }
     private sealed record OrderCreateBody(int customer_id, int store_id, int shipping_address_id, int? billing_address_id, string? status, string? payment_status);
     private sealed record OrderPatchBody(string? status, string? payment_status, int? shipping_address_id, int? billing_address_id);
     private sealed record OrderUpdateStatusBody(string? status);

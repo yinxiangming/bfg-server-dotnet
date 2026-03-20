@@ -29,6 +29,23 @@
    ```
    API base: `http://localhost:5000` (or the port in `src/Bfg.Api/Properties/launchSettings.json`). Swagger UI: `http://localhost:5000/api/docs`
 
+### CLI tools (`bfg-cli`)
+
+General-purpose commands (DB from same `DATABASE_URL` / `.env` as the API). Entry: `tools/Bfg.Cli`.
+
+```bash
+cd bfg-server-dotnet
+dotnet run --project tools/Bfg.Cli -- --help
+
+# Remove all tenant data for one workspace (not common_user / finance_currency):
+dotnet run --project tools/Bfg.Cli -- workspace purge <workspaceId>
+dotnet run --project tools/Bfg.Cli -- workspace purge <workspaceId> --dry-run
+
+# All workspaces (still does not delete users / superadmin; requires --confirm to run):
+dotnet run --project tools/Bfg.Cli -- workspace purge-all --dry-run
+dotnet run --project tools/Bfg.Cli -- workspace purge-all --confirm
+```
+
 ## Environment variables
 
 Loaded from `.env` in repo root (via DotNetEnv). Shell or launch settings override `.env`.
