@@ -12,26 +12,54 @@ public static class FinanceEndpoints
     public static void MapFinanceEndpoints(this IEndpointRouteBuilder app)
     {
         var group = app.MapGroup("/api/v1/finance").WithTags("Finance").RequireAuthorization();
+        var root = app.MapGroup("/api/v1").WithTags("Finance").RequireAuthorization();
 
         group.MapGet("/currencies", ListCurrencies);
         group.MapPost("/currencies/", CreateCurrency);
         group.MapGet("/currencies/{id:int}", GetCurrency);
 
+        root.MapGet("/currencies", ListCurrencies);
+        root.MapPost("/currencies/", CreateCurrency);
+        root.MapGet("/currencies/{id:int}", GetCurrency);
+
         group.MapGet("/payment-gateways", ListPaymentGateways);
         group.MapPost("/payment-gateways/", CreatePaymentGateway);
         group.MapGet("/payment-gateways/{id:int}", GetPaymentGateway);
+
+        root.MapGet("/payment-gateways", ListPaymentGateways);
+        root.MapPost("/payment-gateways/", CreatePaymentGateway);
+        root.MapGet("/payment-gateways/{id:int}", GetPaymentGateway);
 
         group.MapGet("/payments", ListPayments);
         group.MapPost("/payments/", CreatePayment);
         group.MapGet("/payments/{id:int}", GetPayment);
 
+        root.MapGet("/payments", ListPayments);
+        root.MapPost("/payments/", CreatePayment);
+        root.MapGet("/payments/{id:int}", GetPayment);
+
         group.MapGet("/invoices", ListInvoices);
         group.MapPost("/invoices/", CreateInvoice);
         group.MapGet("/invoices/{id:int}", GetInvoice);
+
+        root.MapGet("/invoices", ListInvoices);
+        root.MapPost("/invoices/", CreateInvoice);
+        root.MapGet("/invoices/{id:int}", GetInvoice);
     }
 
     private static async Task<IResult> ListCurrencies(BfgDbContext db, HttpRequest req, CancellationToken ct)
     {
+        if (!await db.Currencies.AsNoTracking().AnyAsync(c => c.IsActive, ct))
+        {
+            db.Currencies.AddRange(
+                new Currency { Code = "USD", Name = "US Dollar", Symbol = "$", DecimalPlaces = 2, IsActive = true },
+                new Currency { Code = "EUR", Name = "Euro", Symbol = "€", DecimalPlaces = 2, IsActive = true },
+                new Currency { Code = "GBP", Name = "British Pound", Symbol = "£", DecimalPlaces = 2, IsActive = true },
+                new Currency { Code = "CNY", Name = "Chinese Yuan", Symbol = "¥", DecimalPlaces = 2, IsActive = true }
+            );
+            await db.SaveChangesAsync(ct);
+        }
+
         var (page, pageSize) = Pagination.FromRequest(req);
         var query = db.Currencies.AsNoTracking().Where(c => c.IsActive);
         var total = await query.CountAsync(ct);

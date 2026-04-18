@@ -42,7 +42,7 @@ public static class CommonEndpoints
         var query = db.Workspaces.AsNoTracking().Where(w => w.IsActive).OrderBy(w => w.Name);
         var total = await query.CountAsync(ct);
         var list = await query.Skip((page - 1) * pageSize).Take(pageSize)
-            .Select(w => new { id = w.Id, name = w.Name, slug = w.Slug, domain = w.Domain, email = w.Email, phone = w.Phone, is_active = w.IsActive, settings = w.Settings, created_at = w.CreatedAt, updated_at = w.UpdatedAt })
+            .Select(w => new { id = w.Id, name = w.Name, uuid = w.Uuid, slug = w.Slug, email = w.Email, phone = w.Phone, is_active = w.IsActive, settings = w.Settings, created_at = w.CreatedAt, updated_at = w.UpdatedAt })
             .ToListAsync(ct);
         return Results.Ok(Pagination.Wrap(list, page, pageSize, total));
     }
@@ -57,8 +57,8 @@ public static class CommonEndpoints
         var w = new Workspace
         {
             Name = body.name ?? "",
+            Uuid = Guid.NewGuid().ToString("N"),
             Slug = slug,
-            Domain = body.domain ?? "",
             Email = body.email ?? "",
             IsActive = true,
             Settings = "{}",
@@ -108,6 +108,9 @@ public static class CommonEndpoints
             var u = await db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == existing.UserId, ct);
             return Results.Ok(new { id = existing.Id, workspace = existing.WorkspaceId, user = new { id = u?.Id, username = u?.Username, email = u?.Email }, customer_number = existing.CustomerNumber, company_name = existing.CompanyName, tax_number = existing.TaxNumber, is_active = existing.IsActive, created_at = existing.CreatedAt });
         }
+        var linkedUser = await db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == userId, ct);
+        if (linkedUser == null)
+            return Results.BadRequest(new { user_id = new[] { "User does not exist." } });
         var customerNumber = await CustomerNumberService.GetNextForWorkspaceAsync(wid.Value, ws => GetMaxCustomerSequenceAsync(db, ws, ct));
         var c = new Customer
         {

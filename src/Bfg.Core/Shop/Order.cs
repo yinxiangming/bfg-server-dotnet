@@ -9,6 +9,7 @@ public class Order
     public string OrderNumber { get; set; } = "";
     public string Status { get; set; } = "pending";
     public string PaymentStatus { get; set; } = "pending";
+    public string FulfillmentMethod { get; set; } = "shipping";
     public decimal Subtotal { get; set; }
     public decimal ShippingCost { get; set; }
     public decimal Tax { get; set; }

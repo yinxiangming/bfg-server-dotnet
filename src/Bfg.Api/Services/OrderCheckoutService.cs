@@ -107,6 +107,7 @@ public sealed class OrderCheckoutService(BfgDbContext db)
             OrderNumber = orderNum,
             Status = "pending",
             PaymentStatus = "pending",
+            FulfillmentMethod = "shipping",
             Subtotal = calc.Subtotal,
             ShippingCost = calc.ShippingCost,
             Tax = calc.Tax,

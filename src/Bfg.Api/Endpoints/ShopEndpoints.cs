@@ -15,12 +15,19 @@ public static class ShopEndpoints
     public static void MapShopEndpoints(this IEndpointRouteBuilder app)
     {
         var group = app.MapGroup("/api/v1/shop").WithTags("Shop").RequireAuthorization();
+        var root = app.MapGroup("/api/v1").WithTags("Shop").RequireAuthorization();
 
         group.MapGet("/categories", ListCategories);
         group.MapPost("/categories/", CreateCategory);
         group.MapGet("/categories/{id:int}", GetCategory);
         group.MapPatch("/categories/{id:int}", PatchCategory);
         group.MapDelete("/categories/{id:int}", DeleteCategory);
+
+        root.MapGet("/categories", ListCategories);
+        root.MapPost("/categories/", CreateCategory);
+        root.MapGet("/categories/{id:int}", GetCategory);
+        root.MapPatch("/categories/{id:int}", PatchCategory);
+        root.MapDelete("/categories/{id:int}", DeleteCategory);
 
         group.MapGet("/products", ListProducts);
         group.MapPost("/products/", CreateProduct);
@@ -29,22 +36,45 @@ public static class ShopEndpoints
         group.MapPatch("/products/{id:int}", PatchProduct);
         group.MapDelete("/products/{id:int}", DeleteProduct);
 
+        root.MapGet("/products", ListProducts);
+        root.MapPost("/products/", CreateProduct);
+        root.MapPost("/products/tags/", CreateProductTag);
+        root.MapGet("/products/{id:int}", GetProduct);
+        root.MapPatch("/products/{id:int}", PatchProduct);
+        root.MapDelete("/products/{id:int}", DeleteProduct);
+
         group.MapGet("/variants", ListVariants);
         group.MapPost("/variants/", CreateVariant);
         group.MapGet("/variants/{id:int}", GetVariant);
         group.MapPatch("/variants/{id:int}", PatchVariant);
 
+        root.MapGet("/variants", ListVariants);
+        root.MapPost("/variants/", CreateVariant);
+        root.MapGet("/variants/{id:int}", GetVariant);
+        root.MapPatch("/variants/{id:int}", PatchVariant);
+
         group.MapPost("/product-media/", CreateProductMedia);
+        root.MapPost("/product-media/", CreateProductMedia);
 
         group.MapGet("/sales-channels", ListSalesChannels);
         group.MapPost("/sales-channels/", CreateSalesChannel);
         group.MapPost("/sales-channels/{id:int}/add_product/", SalesChannelAddProduct);
+
+        root.MapGet("/sales-channels", ListSalesChannels);
+        root.MapPost("/sales-channels/", CreateSalesChannel);
+        root.MapPost("/sales-channels/{id:int}/add_product/", SalesChannelAddProduct);
 
         group.MapGet("/stores", ListStores);
         group.MapPost("/stores/", CreateStore);
         group.MapGet("/stores/{id:int}", GetStore);
         group.MapPatch("/stores/{id:int}", PatchStore);
         group.MapPost("/stores/{id:int}/warehouses/", SetStoreWarehouses);
+
+        root.MapGet("/stores", ListStores);
+        root.MapPost("/stores/", CreateStore);
+        root.MapGet("/stores/{id:int}", GetStore);
+        root.MapPatch("/stores/{id:int}", PatchStore);
+        root.MapPost("/stores/{id:int}/warehouses/", SetStoreWarehouses);
 
         group.MapGet("/carts", ListCarts);
         group.MapGet("/carts/{id:int}", GetCart);
@@ -53,6 +83,14 @@ public static class ShopEndpoints
         group.MapPost("/carts/remove_item/", CartRemoveItem);
         group.MapPost("/carts/clear/", CartClear);
         group.MapPost("/carts/checkout/", CartCheckout);
+
+        root.MapGet("/carts", ListCarts);
+        root.MapGet("/carts/{id:int}", GetCart);
+        root.MapPost("/carts/", CreateCart);
+        root.MapPost("/carts/add_item/", CartAddItem);
+        root.MapPost("/carts/remove_item/", CartRemoveItem);
+        root.MapPost("/carts/clear/", CartClear);
+        root.MapPost("/carts/checkout/", CartCheckout);
 
         group.MapGet("/orders/", ListOrders);
         group.MapPost("/orders/", CreateOrder);
@@ -68,10 +106,29 @@ public static class ShopEndpoints
         group.MapPost("/order-items/", CreateOrderItem);
         group.MapGet("/order-items/{id:int}", GetOrderItem);
 
+        root.MapGet("/orders/", ListOrders);
+        root.MapPost("/orders/", CreateOrder);
+        root.MapGet("/orders/{id:int}/", GetOrder);
+        root.MapPatch("/orders/{id:int}", PatchOrder);
+        root.MapPost("/orders/{id:int}/update_status/", OrderUpdateStatus);
+        root.MapPost("/orders/{id:int}/cancel/", OrderCancel);
+        root.MapPost("/orders/{id:int}/process/", OrderProcess);
+        root.MapPost("/orders/{id:int}/ship/", OrderShip);
+        root.MapPost("/orders/{id:int}/complete/", OrderComplete);
+        root.MapPost("/orders/{id:int}/update_items/", OrderUpdateItems);
+        root.MapGet("/order-items", ListOrderItems);
+        root.MapPost("/order-items/", CreateOrderItem);
+        root.MapGet("/order-items/{id:int}", GetOrderItem);
+
         group.MapPost("/order-packages/", CreateOrderPackage);
         group.MapPost("/order-packages/calculate_shipping/", CalculateOrderPackagesShipping);
         group.MapPost("/order-packages/update_order_shipping/", UpdateOrderShippingFromPackages);
         group.MapGet("/returns/", () => Results.Ok(Array.Empty<object>()));
+
+        root.MapPost("/order-packages/", CreateOrderPackage);
+        root.MapPost("/order-packages/calculate_shipping/", CalculateOrderPackagesShipping);
+        root.MapPost("/order-packages/update_order_shipping/", UpdateOrderShippingFromPackages);
+        root.MapGet("/returns/", () => Results.Ok(Array.Empty<object>()));
     }
 
     private static async Task<IResult> ListCategories(BfgDbContext db, HttpContext ctx, HttpRequest req, CancellationToken ct)

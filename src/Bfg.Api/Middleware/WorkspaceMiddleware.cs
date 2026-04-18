@@ -32,11 +32,10 @@ public class WorkspaceMiddleware
         if (!string.IsNullOrEmpty(workspaceIdHeader) && int.TryParse(workspaceIdHeader, out var id))
             workspace = await db.Workspaces.AsNoTracking().FirstOrDefaultAsync(w => w.Id == id && w.IsActive);
 
-        if (workspace == null)
+        if (workspace == null && !ShouldSkipFallback(context))
         {
-            var host = context.Request.Host.Value;
             workspace = await db.Workspaces.AsNoTracking()
-                .Where(w => w.Domain == host && w.IsActive)
+                .Where(w => w.IsActive)
                 .OrderBy(w => w.Id)
                 .FirstOrDefaultAsync();
         }
@@ -48,6 +47,15 @@ public class WorkspaceMiddleware
         }
 
         await _next(context);
+    }
+
+    private static bool ShouldSkipFallback(HttpContext context)
+    {
+        var path = context.Request.Path;
+        foreach (var skip in SkipPaths)
+            if (path.StartsWithSegments(skip, StringComparison.OrdinalIgnoreCase))
+                return true;
+        return false;
     }
 
     private static bool ShouldSkip(HttpContext context)
