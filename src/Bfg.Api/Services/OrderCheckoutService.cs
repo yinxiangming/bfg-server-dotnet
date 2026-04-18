@@ -145,6 +145,25 @@ public sealed class OrderCheckoutService(BfgDbContext db)
         db.CartItems.RemoveRange(cartItems);
         await db.SaveChangesAsync(ct);
 
+        // Decrement inventory for products/variants that track stock
+        foreach (var it in cartItems)
+        {
+            if (it.VariantId.HasValue)
+            {
+                var variant = await db.Variants.FirstOrDefaultAsync(v => v.Id == it.VariantId.Value, ct);
+                if (variant != null)
+                {
+                    variant.StockQuantity = Math.Max(0, variant.StockQuantity - it.Quantity);
+                }
+            }
+            var product = await db.Products.FirstOrDefaultAsync(p => p.Id == it.ProductId, ct);
+            if (product != null && product.TrackInventory)
+            {
+                product.StockQuantity = Math.Max(0, product.StockQuantity - it.Quantity);
+            }
+        }
+        await db.SaveChangesAsync(ct);
+
         if (calc.CouponIdToIncrement is { } couponRowId)
         {
             var v = await db.Vouchers.FirstOrDefaultAsync(x => x.Id == couponRowId, ct);

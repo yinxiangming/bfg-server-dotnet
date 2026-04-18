@@ -212,7 +212,7 @@ public static class FinanceEndpoints
                         unitOk = true;
                 }
                 if (unitOk && unitPrice < 0)
-                    return Results.BadRequest(new { detail = "unit_price must be non-negative" });
+                    return Results.BadRequest(new { detail = "unit price must be non-negative" });
                 if (el.TryGetProperty("discount", out var dEl))
                 {
                     var dStr = dEl.ValueKind == JsonValueKind.String ? dEl.GetString() : dEl.GetRawText();

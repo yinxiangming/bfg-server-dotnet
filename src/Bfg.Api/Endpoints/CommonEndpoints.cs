@@ -99,8 +99,10 @@ public static class CommonEndpoints
         var wid = WorkspaceMiddleware.GetWorkspaceId(ctx);
         if (!wid.HasValue) return Results.BadRequest(new { detail = "No workspace. Send X-Workspace-Id header." });
         var body = await ctx.Request.ReadFromJsonAsync<CustomerCreateBody>(ct);
-        if (body == null || body.user <= 0) return Results.BadRequest();
-        var existing = await db.Customers.AsNoTracking().FirstOrDefaultAsync(c => c.WorkspaceId == wid.Value && c.UserId == body.user, ct);
+        if (body == null) return Results.BadRequest();
+        var userId = body.user > 0 ? body.user : body.user_id;
+        if (userId <= 0) return Results.BadRequest();
+        var existing = await db.Customers.AsNoTracking().FirstOrDefaultAsync(c => c.WorkspaceId == wid.Value && c.UserId == userId, ct);
         if (existing != null)
         {
             var u = await db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == existing.UserId, ct);
@@ -110,7 +112,7 @@ public static class CommonEndpoints
         var c = new Customer
         {
             WorkspaceId = wid.Value,
-            UserId = body.user,
+            UserId = userId,
             CompanyName = body.company_name ?? "",
             TaxNumber = body.tax_number ?? "",
             CustomerNumber = customerNumber,
@@ -331,7 +333,7 @@ public static class CommonEndpoints
     }
 
     private sealed record WorkspaceCreateBody(string? name, string? slug, string? domain, string? email);
-    private sealed record CustomerCreateBody(int user, string? company_name, string? tax_number);
+    private sealed record CustomerCreateBody(int user, int user_id, string? company_name, string? tax_number);
     private sealed record AddressCreateBody(string? full_name, string? phone, string? email, string? address_line1, string? address_line2, string? city, string? state, string? postal_code, string? country, bool? is_default);
     private sealed record CustomerSegmentCreateBody(string? name, string? description);
     private sealed record CustomerTagCreateBody(string? name);

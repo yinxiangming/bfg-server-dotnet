@@ -335,7 +335,7 @@ public static class StorefrontEndpoints
         var body = await ctx.Request.ReadFromJsonAsync<StoreCartItemBody>(ct);
         if (body is not { Product: > 0 }) return Results.BadRequest();
         var qty = body.Quantity ?? 1;
-        if (qty <= 0) return Results.BadRequest();
+        if (qty <= 0) return Results.BadRequest(new { detail = "Quantity must be greater than 0." });
         var sessionKey = StorefrontCartSession.Resolve(ctx);
         var r = await carts.AddItemForStorefrontAsync(
             wid.Value, sessionKey, body.Product, body.Variant, qty, new CartAddConstraints(1, null), ct);
@@ -584,7 +584,33 @@ public static class StorefrontEndpoints
         });
     }
 
-    private static async Task<IResult> StoreInventory(BfgDbContext db, HttpContext ctx, CancellationToken ct) => Results.Ok(Array.Empty<object>());
+    private static async Task<IResult> StoreInventory(BfgDbContext db, HttpContext ctx, HttpRequest req, CancellationToken ct)
+    {
+        var wid = WorkspaceMiddleware.GetWorkspaceId(ctx);
+        if (!wid.HasValue) return Results.Ok(Array.Empty<object>());
+        var productIdStr = req.Query["product_id"].ToString();
+        var query = db.Products.AsNoTracking().Where(p => p.WorkspaceId == wid.Value && p.IsActive);
+        if (!string.IsNullOrEmpty(productIdStr) && int.TryParse(productIdStr, out var pid))
+            query = query.Where(p => p.Id == pid);
+        var products = await query.Select(p => new { p.Id, p.Name, p.Slug, p.StockQuantity, p.TrackInventory }).ToListAsync(ct);
+        var result = new List<object>();
+        foreach (var p in products)
+        {
+            var variants = await db.Variants.AsNoTracking().Where(v => v.ProductId == p.Id && v.IsActive)
+                .Select(v => new { id = v.Id, sku = v.Sku, stock_quantity = v.StockQuantity }).ToListAsync(ct);
+            result.Add(new
+            {
+                product_id = p.Id,
+                name = p.Name,
+                slug = p.Slug,
+                stock_quantity = p.StockQuantity,
+                track_inventory = p.TrackInventory,
+                in_stock = !p.TrackInventory || p.StockQuantity > 0,
+                variants
+            });
+        }
+        return Results.Ok(result);
+    }
 
     private sealed record StoreCartItemBody(int Product, int? Variant, int? Quantity);
     private sealed record StoreCartUpdateBody(int ItemId, int? Quantity);
