@@ -154,12 +154,12 @@ public static class ShopEndpoints
         var total = await query.CountAsync(ct);
         var (page, pageSize) = Pagination.FromRequest(req);
         var list = await query.OrderByDescending(p => p.IsFeatured).ThenByDescending(p => p.CreatedAt).Skip((page - 1) * pageSize).Take(pageSize)
-            .Select(p => new { id = p.Id, workspace = p.WorkspaceId, name = p.Name, slug = p.Slug, sku = p.Sku, description = p.Description, short_description = p.ShortDescription, price = p.Price.ToString("F2"), compare_at_price = p.ComparePrice.HasValue ? p.ComparePrice.Value.ToString("F2") : (string?)null, is_active = p.IsActive, language = p.Language, created_at = p.CreatedAt }).ToListAsync(ct);
+            .Select(p => new { id = p.Id, workspace = p.WorkspaceId, name = p.Name, slug = p.Slug, sku = p.Sku, description = p.Description, short_description = p.ShortDescription, price = p.Price.ToString("F2"), compare_at_price = p.ComparePrice.HasValue ? p.ComparePrice.Value.ToString("F2") : (string?)null, is_active = p.IsActive, track_inventory = p.TrackInventory, stock_quantity = p.StockQuantity, language = p.Language, created_at = p.CreatedAt }).ToListAsync(ct);
         var result = new List<object>();
         foreach (var p in list)
         {
             var categoryIds = await db.ProductCategoryProducts.Where(pcp => pcp.ProductId == p.id).Select(pcp => pcp.ProductCategoryId).ToListAsync(ct);
-            result.Add(new { p.id, p.workspace, p.name, p.slug, p.sku, p.description, p.short_description, p.price, p.compare_at_price, category_ids = categoryIds, p.is_active, p.language, p.created_at });
+            result.Add(new { p.id, p.workspace, p.name, p.slug, p.sku, p.description, p.short_description, p.price, p.compare_at_price, category_ids = categoryIds, p.is_active, p.track_inventory, p.stock_quantity, p.language, p.created_at });
         }
         return Results.Ok(Pagination.Wrap(result, page, pageSize, total));
     }
@@ -229,7 +229,7 @@ public static class ShopEndpoints
                 db.ProductTagProducts.Add(new ProductTagProduct { ProductId = prod.Id, ProductTagId = tid });
             await db.SaveChangesAsync(ct);
         }
-        return Results.Created("/api/v1/shop/products/", new { id = prod.Id, workspace = prod.WorkspaceId, name = prod.Name, slug = prod.Slug, sku = prod.Sku, description = prod.Description, short_description = prod.ShortDescription, price = prod.Price.ToString("F2"), compare_at_price = prod.ComparePrice?.ToString("F2"), category_ids = body.category_ids ?? new List<int>(), is_active = prod.IsActive, language = prod.Language, created_at = prod.CreatedAt });
+        return Results.Created("/api/v1/shop/products/", new { id = prod.Id, workspace = prod.WorkspaceId, name = prod.Name, slug = prod.Slug, sku = prod.Sku, description = prod.Description, short_description = prod.ShortDescription, price = prod.Price.ToString("F2"), compare_at_price = prod.ComparePrice?.ToString("F2"), category_ids = body.category_ids ?? new List<int>(), is_active = prod.IsActive, track_inventory = prod.TrackInventory, stock_quantity = prod.StockQuantity, language = prod.Language, created_at = prod.CreatedAt });
     }
 
     private static async Task<IResult> CreateProductTag(BfgDbContext db, HttpContext ctx, CancellationToken ct)
@@ -251,7 +251,7 @@ public static class ShopEndpoints
         if (p == null) return Results.NotFound();
         var categoryIds = await db.ProductCategoryProducts.Where(pcp => pcp.ProductId == id).Select(pcp => pcp.ProductCategoryId).ToListAsync(ct);
         var variants = await db.Variants.AsNoTracking().Where(v => v.ProductId == id).OrderBy(v => v.SortOrder).Select(v => new { id = v.Id, sku = v.Sku, name = v.Name, price = v.Price.HasValue ? v.Price.Value.ToString("F2") : (string?)null, stock_quantity = v.StockQuantity, is_active = v.IsActive }).ToListAsync(ct);
-        return Results.Ok(new { id = p.Id, workspace = p.WorkspaceId, name = p.Name, slug = p.Slug, sku = p.Sku, description = p.Description, short_description = p.ShortDescription, price = p.Price.ToString("F2"), compare_at_price = p.ComparePrice?.ToString("F2"), category_ids = categoryIds, is_active = p.IsActive, language = p.Language, created_at = p.CreatedAt, variants });
+        return Results.Ok(new { id = p.Id, workspace = p.WorkspaceId, name = p.Name, slug = p.Slug, sku = p.Sku, description = p.Description, short_description = p.ShortDescription, price = p.Price.ToString("F2"), compare_at_price = p.ComparePrice?.ToString("F2"), category_ids = categoryIds, is_active = p.IsActive, track_inventory = p.TrackInventory, stock_quantity = p.StockQuantity, language = p.Language, created_at = p.CreatedAt, variants });
     }
 
     private static async Task<IResult> PatchProduct(BfgDbContext db, HttpContext ctx, int id, CancellationToken ct)
@@ -276,7 +276,7 @@ public static class ShopEndpoints
             await db.SaveChangesAsync(ct);
         }
         var categoryIds = await db.ProductCategoryProducts.Where(pcp => pcp.ProductId == id).Select(pcp => pcp.ProductCategoryId).ToListAsync(ct);
-        return Results.Ok(new { id = p.Id, workspace = p.WorkspaceId, name = p.Name, slug = p.Slug, sku = p.Sku, description = p.Description, short_description = p.ShortDescription, price = p.Price.ToString("F2"), compare_at_price = p.ComparePrice?.ToString("F2"), category_ids = categoryIds, is_active = p.IsActive, language = p.Language, created_at = p.CreatedAt });
+        return Results.Ok(new { id = p.Id, workspace = p.WorkspaceId, name = p.Name, slug = p.Slug, sku = p.Sku, description = p.Description, short_description = p.ShortDescription, price = p.Price.ToString("F2"), compare_at_price = p.ComparePrice?.ToString("F2"), category_ids = categoryIds, is_active = p.IsActive, track_inventory = p.TrackInventory, stock_quantity = p.StockQuantity, language = p.Language, created_at = p.CreatedAt });
     }
 
     private static async Task<IResult> DeleteProduct(BfgDbContext db, HttpContext ctx, int id, CancellationToken ct)

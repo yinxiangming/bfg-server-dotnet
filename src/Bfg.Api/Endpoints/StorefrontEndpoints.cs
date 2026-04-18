@@ -197,7 +197,10 @@ public static class StorefrontEndpoints
             images = Array.Empty<object>(),
             discount_percentage = (decimal?)null,
             is_new = p.CreatedAt >= DateTime.UtcNow.AddDays(-30),
-            is_featured = p.IsFeatured
+            is_featured = p.IsFeatured,
+            stock_quantity = p.StockQuantity,
+            track_inventory = p.TrackInventory,
+            in_stock = !p.TrackInventory || p.StockQuantity > 0
         });
     }
 
