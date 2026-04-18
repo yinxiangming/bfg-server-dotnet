@@ -103,7 +103,8 @@ public static class FinanceEndpoints
     {
         var wid = WorkspaceMiddleware.GetWorkspaceId(ctx);
         var query = db.Payments.AsNoTracking().Where(p => !wid.HasValue || p.WorkspaceId == wid.Value);
-        var list = await query.OrderByDescending(p => p.CreatedAt).Select(p => new { id = p.Id, order_id = p.OrderId, amount = p.Amount, status = p.Status, created_at = p.CreatedAt }).ToListAsync(ct);
+        var raw = await query.OrderByDescending(p => p.CreatedAt).Select(p => new { p.Id, p.OrderId, p.Amount, p.Status, p.CreatedAt }).ToListAsync(ct);
+        var list = raw.Select(p => (object)new { id = p.Id, order_id = p.OrderId, amount = p.Amount.ToString("F2"), status = p.Status, created_at = p.CreatedAt }).ToList();
         return Results.Ok(list);
     }
 

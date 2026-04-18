@@ -294,7 +294,8 @@ public static class ShopEndpoints
         var wid = WorkspaceMiddleware.GetWorkspaceId(ctx);
         var productIds = wid.HasValue ? await db.Products.Where(p => p.WorkspaceId == wid.Value).Select(p => p.Id).ToListAsync(ct) : null;
         var query = db.Variants.AsNoTracking().Where(v => (productIds == null || productIds.Contains(v.ProductId)) && (!product.HasValue || v.ProductId == product.Value));
-        var list = await query.OrderBy(v => v.SortOrder).Select(v => new { id = v.Id, product = v.ProductId, sku = v.Sku, name = v.Name, price = v.Price, options = v.Options, stock_quantity = v.StockQuantity, is_active = v.IsActive }).ToListAsync(ct);
+        var raw = await query.OrderBy(v => v.SortOrder).Select(v => new { v.Id, v.ProductId, v.Sku, v.Name, v.Price, v.Options, v.StockQuantity, v.IsActive }).ToListAsync(ct);
+        var list = raw.Select(v => (object)new { id = v.Id, product = v.ProductId, sku = v.Sku, name = v.Name, price = v.Price.HasValue ? v.Price.Value.ToString("F2") : (string?)null, options = v.Options, stock_quantity = v.StockQuantity, is_active = v.IsActive }).ToList();
         return Results.Ok(list);
     }
 
@@ -335,8 +336,16 @@ public static class ShopEndpoints
         var v = await db.Variants.FirstOrDefaultAsync(x => x.Id == id, ct);
         if (v == null) return Results.NotFound();
         var body = await ctx.Request.ReadFromJsonAsync<VariantPatchBody>(ct);
-        if (body != null) await db.SaveChangesAsync(ct);
-        return Results.Ok(new { id = v.Id });
+        if (body != null)
+        {
+            if (body.name != null) v.Name = body.name;
+            if (body.sku != null) v.Sku = body.sku;
+            if (body.price != null && decimal.TryParse(body.price, out var pv)) v.Price = pv;
+            if (body.stock_quantity.HasValue) v.StockQuantity = body.stock_quantity.Value;
+            if (body.is_active.HasValue) v.IsActive = body.is_active.Value;
+            await db.SaveChangesAsync(ct);
+        }
+        return Results.Ok(new { id = v.Id, product = v.ProductId, sku = v.Sku, name = v.Name, price = v.Price.HasValue ? v.Price.Value.ToString("F2") : (string?)null, stock_quantity = v.StockQuantity, is_active = v.IsActive });
     }
 
     private static async Task<IResult> ListSalesChannels(BfgDbContext db, HttpContext ctx, CancellationToken ct)
@@ -974,7 +983,7 @@ public static class ShopEndpoints
             return "{}";
         }
     }
-    private sealed record VariantPatchBody(string? name);
+    private sealed record VariantPatchBody(string? name, string? sku, string? price, int? stock_quantity, bool? is_active);
     private sealed record SalesChannelCreateBody(string? name, string? code, string? channel_type, string? description, bool? is_active, bool? is_default);
     private sealed record SalesChannelAddProductBody(int? product_id);
     private sealed record StoreCreateBody(string? name, string? code, string? description, List<int>? warehouse_ids);

@@ -39,6 +39,7 @@ public static class DeliveryEndpoints
 
         group.MapPost("/freight-statuses/", CreateFreightStatus);
 
+        group.MapGet("/consignments", ListConsignments);
         group.MapPost("/consignments/", CreateConsignment);
         group.MapPatch("/consignments/{refKey}/", PatchConsignment);
     }
@@ -83,7 +84,7 @@ public static class DeliveryEndpoints
         var wid = WorkspaceMiddleware.GetWorkspaceId(ctx);
         var w = await db.Warehouses.AsNoTracking().FirstOrDefaultAsync(x => x.Id == id && x.WorkspaceId == wid!.Value, ct);
         if (w == null) return Results.NotFound();
-        return Results.Ok(new { id = w.Id, name = w.Name, code = w.Code, is_active = w.IsActive });
+        return Results.Ok(new { id = w.Id, name = w.Name, code = w.Code, is_active = w.IsActive, workspace_id = w.WorkspaceId });
     }
 
     private static async Task<IResult> PatchWarehouse(BfgDbContext db, HttpContext ctx, int id, CancellationToken ct)
@@ -340,6 +341,20 @@ public static class DeliveryEndpoints
         db.FreightStatuses.Add(f);
         await db.SaveChangesAsync(ct);
         return Results.Created("/api/v1/delivery/freight-statuses/", new { id = f.Id, code = f.Code, name = f.Name, type = f.Type, state = f.State });
+    }
+
+    private static async Task<IResult> ListConsignments(BfgDbContext db, HttpContext ctx, HttpRequest req, CancellationToken ct)
+    {
+        var wid = WorkspaceMiddleware.GetWorkspaceId(ctx);
+        if (!wid.HasValue) return Results.Ok(Pagination.Wrap(new List<object>(), 1, 20, 0));
+        var (page, pageSize) = Pagination.FromRequest(req);
+        var query = db.Consignments.AsNoTracking().Where(c => c.WorkspaceId == wid.Value);
+        var total = await query.CountAsync(ct);
+        var raw = await query.OrderByDescending(c => c.CreatedAt).Skip((page - 1) * pageSize).Take(pageSize)
+            .Select(c => new { c.Id, c.ConsignmentNumber, c.TrackingNumber, c.State, c.StatusId, c.ServiceId, c.CreatedAt })
+            .ToListAsync(ct);
+        var list = raw.Select(c => (object)new { id = c.Id, consignment_number = c.ConsignmentNumber, tracking_number = c.TrackingNumber, state = c.State, status = c.State, status_id = c.StatusId, service_id = c.ServiceId, created_at = c.CreatedAt }).ToList();
+        return Results.Ok(Pagination.Wrap(list, page, pageSize, total));
     }
 
     private static async Task<IResult> CreateConsignment(BfgDbContext db, HttpContext ctx, CancellationToken ct)

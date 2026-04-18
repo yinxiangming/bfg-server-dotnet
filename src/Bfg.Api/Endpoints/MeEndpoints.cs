@@ -345,7 +345,8 @@ public static class MeEndpoints
         if (!customerId.HasValue) return Results.Ok(Array.Empty<object>());
         var query = db.Invoices.AsNoTracking().Where(i => i.CustomerId == customerId);
         if (!string.IsNullOrEmpty(status)) query = query.Where(i => i.Status == status);
-        var list = await query.OrderByDescending(i => i.CreatedAt).Select(i => new { id = i.Id, invoice_number = i.InvoiceNumber, total = i.TotalAmount.ToString("F2"), status = i.Status }).ToListAsync(ct);
+        var raw = await query.OrderByDescending(i => i.CreatedAt).Select(i => new { i.Id, i.InvoiceNumber, i.TotalAmount, i.Status }).ToListAsync(ct);
+        var list = raw.Select(i => (object)new { id = i.Id, invoice_number = i.InvoiceNumber, total_amount = i.TotalAmount.ToString("F2"), status = i.Status }).ToList();
         return Results.Ok(list);
     }
 
