@@ -70,7 +70,7 @@ public sealed class CartService(BfgDbContext db)
         CancellationToken ct)
     {
         if (quantity < constraints.MinQuantity)
-            return CartMutationResult.Fail("bad_request", $"Quantity must be at least {constraints.MinQuantity}.");
+            return CartMutationResult.Fail("bad_request", "Quantity must be greater than 0.");
         if (constraints.MaxQuantity is { } max && quantity > max)
             return CartMutationResult.Fail("bad_request", $"Quantity cannot exceed {max}.");
 
@@ -137,7 +137,7 @@ public sealed class CartService(BfgDbContext db)
             return await AddItemAsync(workspaceId, productId, variantId, quantity, constraints, ct);
 
         if (quantity < constraints.MinQuantity)
-            return CartMutationResult.Fail("bad_request", $"Quantity must be at least {constraints.MinQuantity}.");
+            return CartMutationResult.Fail("bad_request", "Quantity must be greater than 0.");
         if (constraints.MaxQuantity is { } max && quantity > max)
             return CartMutationResult.Fail("bad_request", $"Quantity cannot exceed {max}.");
 

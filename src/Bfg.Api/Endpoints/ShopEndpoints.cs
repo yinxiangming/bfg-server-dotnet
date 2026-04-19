@@ -15,12 +15,19 @@ public static class ShopEndpoints
     public static void MapShopEndpoints(this IEndpointRouteBuilder app)
     {
         var group = app.MapGroup("/api/v1/shop").WithTags("Shop").RequireAuthorization();
+        var root = app.MapGroup("/api/v1").WithTags("Shop").RequireAuthorization();
 
         group.MapGet("/categories", ListCategories);
         group.MapPost("/categories/", CreateCategory);
         group.MapGet("/categories/{id:int}", GetCategory);
         group.MapPatch("/categories/{id:int}", PatchCategory);
         group.MapDelete("/categories/{id:int}", DeleteCategory);
+
+        root.MapGet("/categories", ListCategories);
+        root.MapPost("/categories/", CreateCategory);
+        root.MapGet("/categories/{id:int}", GetCategory);
+        root.MapPatch("/categories/{id:int}", PatchCategory);
+        root.MapDelete("/categories/{id:int}", DeleteCategory);
 
         group.MapGet("/products", ListProducts);
         group.MapPost("/products/", CreateProduct);
@@ -29,22 +36,45 @@ public static class ShopEndpoints
         group.MapPatch("/products/{id:int}", PatchProduct);
         group.MapDelete("/products/{id:int}", DeleteProduct);
 
+        root.MapGet("/products", ListProducts);
+        root.MapPost("/products/", CreateProduct);
+        root.MapPost("/products/tags/", CreateProductTag);
+        root.MapGet("/products/{id:int}", GetProduct);
+        root.MapPatch("/products/{id:int}", PatchProduct);
+        root.MapDelete("/products/{id:int}", DeleteProduct);
+
         group.MapGet("/variants", ListVariants);
         group.MapPost("/variants/", CreateVariant);
         group.MapGet("/variants/{id:int}", GetVariant);
         group.MapPatch("/variants/{id:int}", PatchVariant);
 
+        root.MapGet("/variants", ListVariants);
+        root.MapPost("/variants/", CreateVariant);
+        root.MapGet("/variants/{id:int}", GetVariant);
+        root.MapPatch("/variants/{id:int}", PatchVariant);
+
         group.MapPost("/product-media/", CreateProductMedia);
+        root.MapPost("/product-media/", CreateProductMedia);
 
         group.MapGet("/sales-channels", ListSalesChannels);
         group.MapPost("/sales-channels/", CreateSalesChannel);
         group.MapPost("/sales-channels/{id:int}/add_product/", SalesChannelAddProduct);
+
+        root.MapGet("/sales-channels", ListSalesChannels);
+        root.MapPost("/sales-channels/", CreateSalesChannel);
+        root.MapPost("/sales-channels/{id:int}/add_product/", SalesChannelAddProduct);
 
         group.MapGet("/stores", ListStores);
         group.MapPost("/stores/", CreateStore);
         group.MapGet("/stores/{id:int}", GetStore);
         group.MapPatch("/stores/{id:int}", PatchStore);
         group.MapPost("/stores/{id:int}/warehouses/", SetStoreWarehouses);
+
+        root.MapGet("/stores", ListStores);
+        root.MapPost("/stores/", CreateStore);
+        root.MapGet("/stores/{id:int}", GetStore);
+        root.MapPatch("/stores/{id:int}", PatchStore);
+        root.MapPost("/stores/{id:int}/warehouses/", SetStoreWarehouses);
 
         group.MapGet("/carts", ListCarts);
         group.MapGet("/carts/{id:int}", GetCart);
@@ -53,6 +83,14 @@ public static class ShopEndpoints
         group.MapPost("/carts/remove_item/", CartRemoveItem);
         group.MapPost("/carts/clear/", CartClear);
         group.MapPost("/carts/checkout/", CartCheckout);
+
+        root.MapGet("/carts", ListCarts);
+        root.MapGet("/carts/{id:int}", GetCart);
+        root.MapPost("/carts/", CreateCart);
+        root.MapPost("/carts/add_item/", CartAddItem);
+        root.MapPost("/carts/remove_item/", CartRemoveItem);
+        root.MapPost("/carts/clear/", CartClear);
+        root.MapPost("/carts/checkout/", CartCheckout);
 
         group.MapGet("/orders/", ListOrders);
         group.MapPost("/orders/", CreateOrder);
@@ -68,10 +106,29 @@ public static class ShopEndpoints
         group.MapPost("/order-items/", CreateOrderItem);
         group.MapGet("/order-items/{id:int}", GetOrderItem);
 
+        root.MapGet("/orders/", ListOrders);
+        root.MapPost("/orders/", CreateOrder);
+        root.MapGet("/orders/{id:int}/", GetOrder);
+        root.MapPatch("/orders/{id:int}", PatchOrder);
+        root.MapPost("/orders/{id:int}/update_status/", OrderUpdateStatus);
+        root.MapPost("/orders/{id:int}/cancel/", OrderCancel);
+        root.MapPost("/orders/{id:int}/process/", OrderProcess);
+        root.MapPost("/orders/{id:int}/ship/", OrderShip);
+        root.MapPost("/orders/{id:int}/complete/", OrderComplete);
+        root.MapPost("/orders/{id:int}/update_items/", OrderUpdateItems);
+        root.MapGet("/order-items", ListOrderItems);
+        root.MapPost("/order-items/", CreateOrderItem);
+        root.MapGet("/order-items/{id:int}", GetOrderItem);
+
         group.MapPost("/order-packages/", CreateOrderPackage);
         group.MapPost("/order-packages/calculate_shipping/", CalculateOrderPackagesShipping);
         group.MapPost("/order-packages/update_order_shipping/", UpdateOrderShippingFromPackages);
         group.MapGet("/returns/", () => Results.Ok(Array.Empty<object>()));
+
+        root.MapPost("/order-packages/", CreateOrderPackage);
+        root.MapPost("/order-packages/calculate_shipping/", CalculateOrderPackagesShipping);
+        root.MapPost("/order-packages/update_order_shipping/", UpdateOrderShippingFromPackages);
+        root.MapGet("/returns/", () => Results.Ok(Array.Empty<object>()));
     }
 
     private static async Task<IResult> ListCategories(BfgDbContext db, HttpContext ctx, HttpRequest req, CancellationToken ct)
@@ -154,12 +211,12 @@ public static class ShopEndpoints
         var total = await query.CountAsync(ct);
         var (page, pageSize) = Pagination.FromRequest(req);
         var list = await query.OrderByDescending(p => p.IsFeatured).ThenByDescending(p => p.CreatedAt).Skip((page - 1) * pageSize).Take(pageSize)
-            .Select(p => new { id = p.Id, workspace = p.WorkspaceId, name = p.Name, slug = p.Slug, sku = p.Sku, description = p.Description, short_description = p.ShortDescription, price = p.Price.ToString("F2"), compare_at_price = p.ComparePrice.HasValue ? p.ComparePrice.Value.ToString("F2") : (string?)null, is_active = p.IsActive, language = p.Language, created_at = p.CreatedAt }).ToListAsync(ct);
+            .Select(p => new { id = p.Id, workspace = p.WorkspaceId, name = p.Name, slug = p.Slug, sku = p.Sku, description = p.Description, short_description = p.ShortDescription, price = p.Price.ToString("F2"), compare_at_price = p.ComparePrice.HasValue ? p.ComparePrice.Value.ToString("F2") : (string?)null, is_active = p.IsActive, track_inventory = p.TrackInventory, stock_quantity = p.StockQuantity, language = p.Language, created_at = p.CreatedAt }).ToListAsync(ct);
         var result = new List<object>();
         foreach (var p in list)
         {
             var categoryIds = await db.ProductCategoryProducts.Where(pcp => pcp.ProductId == p.id).Select(pcp => pcp.ProductCategoryId).ToListAsync(ct);
-            result.Add(new { p.id, p.workspace, p.name, p.slug, p.sku, p.description, p.short_description, p.price, p.compare_at_price, category_ids = categoryIds, p.is_active, p.language, p.created_at });
+            result.Add(new { p.id, p.workspace, p.name, p.slug, p.sku, p.description, p.short_description, p.price, p.compare_at_price, category_ids = categoryIds, p.is_active, p.track_inventory, p.stock_quantity, p.language, p.created_at });
         }
         return Results.Ok(Pagination.Wrap(result, page, pageSize, total));
     }
@@ -229,7 +286,7 @@ public static class ShopEndpoints
                 db.ProductTagProducts.Add(new ProductTagProduct { ProductId = prod.Id, ProductTagId = tid });
             await db.SaveChangesAsync(ct);
         }
-        return Results.Created("/api/v1/shop/products/", new { id = prod.Id, workspace = prod.WorkspaceId, name = prod.Name, slug = prod.Slug, sku = prod.Sku, description = prod.Description, short_description = prod.ShortDescription, price = prod.Price.ToString("F2"), compare_at_price = prod.ComparePrice?.ToString("F2"), category_ids = body.category_ids ?? new List<int>(), is_active = prod.IsActive, language = prod.Language, created_at = prod.CreatedAt });
+        return Results.Created("/api/v1/shop/products/", new { id = prod.Id, workspace = prod.WorkspaceId, name = prod.Name, slug = prod.Slug, sku = prod.Sku, description = prod.Description, short_description = prod.ShortDescription, price = prod.Price.ToString("F2"), compare_at_price = prod.ComparePrice?.ToString("F2"), category_ids = body.category_ids ?? new List<int>(), is_active = prod.IsActive, track_inventory = prod.TrackInventory, stock_quantity = prod.StockQuantity, language = prod.Language, created_at = prod.CreatedAt });
     }
 
     private static async Task<IResult> CreateProductTag(BfgDbContext db, HttpContext ctx, CancellationToken ct)
@@ -251,7 +308,7 @@ public static class ShopEndpoints
         if (p == null) return Results.NotFound();
         var categoryIds = await db.ProductCategoryProducts.Where(pcp => pcp.ProductId == id).Select(pcp => pcp.ProductCategoryId).ToListAsync(ct);
         var variants = await db.Variants.AsNoTracking().Where(v => v.ProductId == id).OrderBy(v => v.SortOrder).Select(v => new { id = v.Id, sku = v.Sku, name = v.Name, price = v.Price.HasValue ? v.Price.Value.ToString("F2") : (string?)null, stock_quantity = v.StockQuantity, is_active = v.IsActive }).ToListAsync(ct);
-        return Results.Ok(new { id = p.Id, workspace = p.WorkspaceId, name = p.Name, slug = p.Slug, sku = p.Sku, description = p.Description, short_description = p.ShortDescription, price = p.Price.ToString("F2"), compare_at_price = p.ComparePrice?.ToString("F2"), category_ids = categoryIds, is_active = p.IsActive, language = p.Language, created_at = p.CreatedAt, variants });
+        return Results.Ok(new { id = p.Id, workspace = p.WorkspaceId, name = p.Name, slug = p.Slug, sku = p.Sku, description = p.Description, short_description = p.ShortDescription, price = p.Price.ToString("F2"), compare_at_price = p.ComparePrice?.ToString("F2"), category_ids = categoryIds, is_active = p.IsActive, track_inventory = p.TrackInventory, stock_quantity = p.StockQuantity, language = p.Language, created_at = p.CreatedAt, variants });
     }
 
     private static async Task<IResult> PatchProduct(BfgDbContext db, HttpContext ctx, int id, CancellationToken ct)
@@ -276,7 +333,7 @@ public static class ShopEndpoints
             await db.SaveChangesAsync(ct);
         }
         var categoryIds = await db.ProductCategoryProducts.Where(pcp => pcp.ProductId == id).Select(pcp => pcp.ProductCategoryId).ToListAsync(ct);
-        return Results.Ok(new { id = p.Id, workspace = p.WorkspaceId, name = p.Name, slug = p.Slug, sku = p.Sku, description = p.Description, short_description = p.ShortDescription, price = p.Price.ToString("F2"), compare_at_price = p.ComparePrice?.ToString("F2"), category_ids = categoryIds, is_active = p.IsActive, language = p.Language, created_at = p.CreatedAt });
+        return Results.Ok(new { id = p.Id, workspace = p.WorkspaceId, name = p.Name, slug = p.Slug, sku = p.Sku, description = p.Description, short_description = p.ShortDescription, price = p.Price.ToString("F2"), compare_at_price = p.ComparePrice?.ToString("F2"), category_ids = categoryIds, is_active = p.IsActive, track_inventory = p.TrackInventory, stock_quantity = p.StockQuantity, language = p.Language, created_at = p.CreatedAt });
     }
 
     private static async Task<IResult> DeleteProduct(BfgDbContext db, HttpContext ctx, int id, CancellationToken ct)
@@ -294,7 +351,8 @@ public static class ShopEndpoints
         var wid = WorkspaceMiddleware.GetWorkspaceId(ctx);
         var productIds = wid.HasValue ? await db.Products.Where(p => p.WorkspaceId == wid.Value).Select(p => p.Id).ToListAsync(ct) : null;
         var query = db.Variants.AsNoTracking().Where(v => (productIds == null || productIds.Contains(v.ProductId)) && (!product.HasValue || v.ProductId == product.Value));
-        var list = await query.OrderBy(v => v.SortOrder).Select(v => new { id = v.Id, product = v.ProductId, sku = v.Sku, name = v.Name, price = v.Price, options = v.Options, stock_quantity = v.StockQuantity, is_active = v.IsActive }).ToListAsync(ct);
+        var raw = await query.OrderBy(v => v.SortOrder).Select(v => new { v.Id, v.ProductId, v.Sku, v.Name, v.Price, v.Options, v.StockQuantity, v.IsActive }).ToListAsync(ct);
+        var list = raw.Select(v => (object)new { id = v.Id, product = v.ProductId, sku = v.Sku, name = v.Name, price = v.Price.HasValue ? v.Price.Value.ToString("F2") : (string?)null, options = v.Options, stock_quantity = v.StockQuantity, is_active = v.IsActive }).ToList();
         return Results.Ok(list);
     }
 
@@ -335,8 +393,16 @@ public static class ShopEndpoints
         var v = await db.Variants.FirstOrDefaultAsync(x => x.Id == id, ct);
         if (v == null) return Results.NotFound();
         var body = await ctx.Request.ReadFromJsonAsync<VariantPatchBody>(ct);
-        if (body != null) await db.SaveChangesAsync(ct);
-        return Results.Ok(new { id = v.Id });
+        if (body != null)
+        {
+            if (body.name != null) v.Name = body.name;
+            if (body.sku != null) v.Sku = body.sku;
+            if (body.price != null && decimal.TryParse(body.price, out var pv)) v.Price = pv;
+            if (body.stock_quantity.HasValue) v.StockQuantity = body.stock_quantity.Value;
+            if (body.is_active.HasValue) v.IsActive = body.is_active.Value;
+            await db.SaveChangesAsync(ct);
+        }
+        return Results.Ok(new { id = v.Id, product = v.ProductId, sku = v.Sku, name = v.Name, price = v.Price.HasValue ? v.Price.Value.ToString("F2") : (string?)null, stock_quantity = v.StockQuantity, is_active = v.IsActive });
     }
 
     private static async Task<IResult> ListSalesChannels(BfgDbContext db, HttpContext ctx, CancellationToken ct)
@@ -974,7 +1040,7 @@ public static class ShopEndpoints
             return "{}";
         }
     }
-    private sealed record VariantPatchBody(string? name);
+    private sealed record VariantPatchBody(string? name, string? sku, string? price, int? stock_quantity, bool? is_active);
     private sealed record SalesChannelCreateBody(string? name, string? code, string? channel_type, string? description, bool? is_active, bool? is_default);
     private sealed record SalesChannelAddProductBody(int? product_id);
     private sealed record StoreCreateBody(string? name, string? code, string? description, List<int>? warehouse_ids);

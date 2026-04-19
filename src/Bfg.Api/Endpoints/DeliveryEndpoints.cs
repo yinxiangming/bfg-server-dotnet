@@ -11,6 +11,7 @@ public static class DeliveryEndpoints
     public static void MapDeliveryEndpoints(this IEndpointRouteBuilder app)
     {
         var group = app.MapGroup("/api/v1/delivery").WithTags("Delivery").RequireAuthorization();
+        var root = app.MapGroup("/api/v1").WithTags("Delivery").RequireAuthorization();
 
         group.MapGet("/warehouses", ListWarehouses);
         group.MapPost("/warehouses/", CreateWarehouse);
@@ -18,29 +19,60 @@ public static class DeliveryEndpoints
         group.MapPatch("/warehouses/{id:int}", PatchWarehouse);
         group.MapDelete("/warehouses/{id:int}", DeleteWarehouse);
 
+        root.MapGet("/warehouses", ListWarehouses);
+        root.MapPost("/warehouses/", CreateWarehouse);
+        root.MapGet("/warehouses/{id:int}", GetWarehouse);
+        root.MapPatch("/warehouses/{id:int}", PatchWarehouse);
+        root.MapDelete("/warehouses/{id:int}", DeleteWarehouse);
+
         group.MapGet("/carriers", ListCarriers);
         group.MapPost("/carriers/", CreateCarrier);
         group.MapGet("/carriers/{id:int}", GetCarrier);
+
+        root.MapGet("/carriers", ListCarriers);
+        root.MapPost("/carriers/", CreateCarrier);
+        root.MapGet("/carriers/{id:int}", GetCarrier);
 
         group.MapGet("/freight-services", ListFreightServices);
         group.MapPost("/freight-services/", CreateFreightService);
         group.MapGet("/freight-services/{id:int}", GetFreightService);
 
+        root.MapGet("/freight-services", ListFreightServices);
+        root.MapPost("/freight-services/", CreateFreightService);
+        root.MapGet("/freight-services/{id:int}", GetFreightService);
+
         group.MapGet("/delivery-zones", ListDeliveryZones);
         group.MapPost("/delivery-zones/", CreateDeliveryZone);
 
+        root.MapGet("/delivery-zones", ListDeliveryZones);
+        root.MapPost("/delivery-zones/", CreateDeliveryZone);
+
         group.MapGet("/shipments", ListShipments);
         group.MapPost("/shipments/", CreateShipment);
+
+        root.MapGet("/shipments", ListShipments);
+        root.MapPost("/shipments/", CreateShipment);
 
         group.MapPost("/package-templates/", CreatePackageTemplate);
         group.MapGet("/package-templates/", ListPackageTemplates);
         group.MapGet("/package-templates/{id:int}/", GetPackageTemplate);
         group.MapPatch("/package-templates/{id:int}/", PatchPackageTemplate);
 
-        group.MapPost("/freight-statuses/", CreateFreightStatus);
+        root.MapPost("/package-templates/", CreatePackageTemplate);
+        root.MapGet("/package-templates/", ListPackageTemplates);
+        root.MapGet("/package-templates/{id:int}/", GetPackageTemplate);
+        root.MapPatch("/package-templates/{id:int}/", PatchPackageTemplate);
 
+        group.MapPost("/freight-statuses/", CreateFreightStatus);
+        root.MapPost("/freight-statuses/", CreateFreightStatus);
+
+        group.MapGet("/consignments", ListConsignments);
         group.MapPost("/consignments/", CreateConsignment);
         group.MapPatch("/consignments/{refKey}/", PatchConsignment);
+
+        root.MapGet("/consignments", ListConsignments);
+        root.MapPost("/consignments/", CreateConsignment);
+        root.MapPatch("/consignments/{refKey}/", PatchConsignment);
     }
 
     private static async Task<IResult> ListWarehouses(BfgDbContext db, HttpContext ctx, HttpRequest req, CancellationToken ct)
@@ -83,7 +115,7 @@ public static class DeliveryEndpoints
         var wid = WorkspaceMiddleware.GetWorkspaceId(ctx);
         var w = await db.Warehouses.AsNoTracking().FirstOrDefaultAsync(x => x.Id == id && x.WorkspaceId == wid!.Value, ct);
         if (w == null) return Results.NotFound();
-        return Results.Ok(new { id = w.Id, name = w.Name, code = w.Code, is_active = w.IsActive });
+        return Results.Ok(new { id = w.Id, name = w.Name, code = w.Code, is_active = w.IsActive, workspace_id = w.WorkspaceId });
     }
 
     private static async Task<IResult> PatchWarehouse(BfgDbContext db, HttpContext ctx, int id, CancellationToken ct)
@@ -340,6 +372,20 @@ public static class DeliveryEndpoints
         db.FreightStatuses.Add(f);
         await db.SaveChangesAsync(ct);
         return Results.Created("/api/v1/delivery/freight-statuses/", new { id = f.Id, code = f.Code, name = f.Name, type = f.Type, state = f.State });
+    }
+
+    private static async Task<IResult> ListConsignments(BfgDbContext db, HttpContext ctx, HttpRequest req, CancellationToken ct)
+    {
+        var wid = WorkspaceMiddleware.GetWorkspaceId(ctx);
+        if (!wid.HasValue) return Results.Ok(Pagination.Wrap(new List<object>(), 1, 20, 0));
+        var (page, pageSize) = Pagination.FromRequest(req);
+        var query = db.Consignments.AsNoTracking().Where(c => c.WorkspaceId == wid.Value);
+        var total = await query.CountAsync(ct);
+        var raw = await query.OrderByDescending(c => c.CreatedAt).Skip((page - 1) * pageSize).Take(pageSize)
+            .Select(c => new { c.Id, c.ConsignmentNumber, c.TrackingNumber, c.State, c.StatusId, c.ServiceId, c.CreatedAt })
+            .ToListAsync(ct);
+        var list = raw.Select(c => (object)new { id = c.Id, consignment_number = c.ConsignmentNumber, tracking_number = c.TrackingNumber, state = c.State, status = c.State, status_id = c.StatusId, service_id = c.ServiceId, created_at = c.CreatedAt }).ToList();
+        return Results.Ok(Pagination.Wrap(list, page, pageSize, total));
     }
 
     private static async Task<IResult> CreateConsignment(BfgDbContext db, HttpContext ctx, CancellationToken ct)

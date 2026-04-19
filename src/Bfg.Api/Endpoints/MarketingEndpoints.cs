@@ -12,24 +12,42 @@ public static class MarketingEndpoints
     public static void MapMarketingEndpoints(this IEndpointRouteBuilder app)
     {
         var group = app.MapGroup("/api/v1/marketing").WithTags("Marketing").RequireAuthorization();
+        var root = app.MapGroup("/api/v1").WithTags("Marketing").RequireAuthorization();
 
         group.MapGet("/campaigns", ListCampaigns);
         group.MapPost("/campaigns/", CreateCampaign);
         group.MapGet("/campaigns/{id:int}", GetCampaign);
         group.MapPatch("/campaigns/{id:int}", PatchCampaign);
 
+        root.MapGet("/campaigns", ListCampaigns);
+        root.MapPost("/campaigns/", CreateCampaign);
+        root.MapGet("/campaigns/{id:int}", GetCampaign);
+        root.MapPatch("/campaigns/{id:int}", PatchCampaign);
+
         group.MapGet("/discount-rules", ListDiscountRules);
         group.MapPost("/discount-rules/", CreateDiscountRule);
+
+        root.MapGet("/discount-rules", ListDiscountRules);
+        root.MapPost("/discount-rules/", CreateDiscountRule);
 
         group.MapGet("/coupons", ListCoupons);
         group.MapPost("/coupons/", CreateCoupon);
         group.MapPatch("/coupons/{id:int}", PatchCoupon);
 
+        root.MapGet("/coupons", ListCoupons);
+        root.MapPost("/coupons/", CreateCoupon);
+        root.MapPatch("/coupons/{id:int}", PatchCoupon);
+
         group.MapGet("/gift-cards", ListGiftCards);
         group.MapPost("/gift-cards/", CreateGiftCard);
         group.MapPost("/gift-cards/{id:int}/redeem/", RedeemGiftCard);
 
+        root.MapGet("/gift-cards", ListGiftCards);
+        root.MapPost("/gift-cards/", CreateGiftCard);
+        root.MapPost("/gift-cards/{id:int}/redeem/", RedeemGiftCard);
+
         group.MapPost("/campaign-displays/", CreateCampaignDisplay);
+        root.MapPost("/campaign-displays/", CreateCampaignDisplay);
 
         var promo = app.MapGroup("/api/v1/promo").WithTags("Promo").RequireAuthorization();
         promo.MapGet("/vouchers", ListVouchers);

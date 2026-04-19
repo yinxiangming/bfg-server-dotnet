@@ -156,6 +156,11 @@ public class BfgDbContext : DbContext
         modelBuilder.Entity<Order>()
             .Property(o => o.TotalAmount)
             .HasColumnName("total");
+        modelBuilder.Entity<Order>()
+            .Property(o => o.FulfillmentMethod)
+            .HasColumnName("fulfillment_method")
+            .IsRequired()
+            .HasDefaultValue("shipping");
         // Django TextField may be NOT NULL in DB without server default — always persist empty string.
         modelBuilder.Entity<Order>()
             .Property(o => o.CustomerNote)

@@ -42,7 +42,7 @@ public static class CommonEndpoints
         var query = db.Workspaces.AsNoTracking().Where(w => w.IsActive).OrderBy(w => w.Name);
         var total = await query.CountAsync(ct);
         var list = await query.Skip((page - 1) * pageSize).Take(pageSize)
-            .Select(w => new { id = w.Id, name = w.Name, slug = w.Slug, domain = w.Domain, email = w.Email, phone = w.Phone, is_active = w.IsActive, settings = w.Settings, created_at = w.CreatedAt, updated_at = w.UpdatedAt })
+            .Select(w => new { id = w.Id, name = w.Name, uuid = w.Uuid, slug = w.Slug, email = w.Email, phone = w.Phone, is_active = w.IsActive, settings = w.Settings, created_at = w.CreatedAt, updated_at = w.UpdatedAt })
             .ToListAsync(ct);
         return Results.Ok(Pagination.Wrap(list, page, pageSize, total));
     }
@@ -57,8 +57,8 @@ public static class CommonEndpoints
         var w = new Workspace
         {
             Name = body.name ?? "",
+            Uuid = Guid.NewGuid().ToString("N"),
             Slug = slug,
-            Domain = body.domain ?? "",
             Email = body.email ?? "",
             IsActive = true,
             Settings = "{}",
@@ -99,18 +99,23 @@ public static class CommonEndpoints
         var wid = WorkspaceMiddleware.GetWorkspaceId(ctx);
         if (!wid.HasValue) return Results.BadRequest(new { detail = "No workspace. Send X-Workspace-Id header." });
         var body = await ctx.Request.ReadFromJsonAsync<CustomerCreateBody>(ct);
-        if (body == null || body.user <= 0) return Results.BadRequest();
-        var existing = await db.Customers.AsNoTracking().FirstOrDefaultAsync(c => c.WorkspaceId == wid.Value && c.UserId == body.user, ct);
+        if (body == null) return Results.BadRequest();
+        var userId = body.user > 0 ? body.user : body.user_id;
+        if (userId <= 0) return Results.BadRequest();
+        var existing = await db.Customers.AsNoTracking().FirstOrDefaultAsync(c => c.WorkspaceId == wid.Value && c.UserId == userId, ct);
         if (existing != null)
         {
             var u = await db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == existing.UserId, ct);
             return Results.Ok(new { id = existing.Id, workspace = existing.WorkspaceId, user = new { id = u?.Id, username = u?.Username, email = u?.Email }, customer_number = existing.CustomerNumber, company_name = existing.CompanyName, tax_number = existing.TaxNumber, is_active = existing.IsActive, created_at = existing.CreatedAt });
         }
+        var linkedUser = await db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == userId, ct);
+        if (linkedUser == null)
+            return Results.BadRequest(new { user_id = new[] { "User does not exist." } });
         var customerNumber = await CustomerNumberService.GetNextForWorkspaceAsync(wid.Value, ws => GetMaxCustomerSequenceAsync(db, ws, ct));
         var c = new Customer
         {
             WorkspaceId = wid.Value,
-            UserId = body.user,
+            UserId = userId,
             CompanyName = body.company_name ?? "",
             TaxNumber = body.tax_number ?? "",
             CustomerNumber = customerNumber,
@@ -331,7 +336,7 @@ public static class CommonEndpoints
     }
 
     private sealed record WorkspaceCreateBody(string? name, string? slug, string? domain, string? email);
-    private sealed record CustomerCreateBody(int user, string? company_name, string? tax_number);
+    private sealed record CustomerCreateBody(int user, int user_id, string? company_name, string? tax_number);
     private sealed record AddressCreateBody(string? full_name, string? phone, string? email, string? address_line1, string? address_line2, string? city, string? state, string? postal_code, string? country, bool? is_default);
     private sealed record CustomerSegmentCreateBody(string? name, string? description);
     private sealed record CustomerTagCreateBody(string? name);
