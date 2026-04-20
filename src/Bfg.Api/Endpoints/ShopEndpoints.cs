@@ -80,6 +80,7 @@ public static class ShopEndpoints
         group.MapGet("/carts/{id:int}", GetCart);
         group.MapPost("/carts/", CreateCart);
         group.MapPost("/carts/add_item/", CartAddItem);
+        group.MapPost("/carts/update_item/", CartUpdateItem);
         group.MapPost("/carts/remove_item/", CartRemoveItem);
         group.MapPost("/carts/clear/", CartClear);
         group.MapPost("/carts/checkout/", CartCheckout);
@@ -88,6 +89,7 @@ public static class ShopEndpoints
         root.MapGet("/carts/{id:int}", GetCart);
         root.MapPost("/carts/", CreateCart);
         root.MapPost("/carts/add_item/", CartAddItem);
+        root.MapPost("/carts/update_item/", CartUpdateItem);
         root.MapPost("/carts/remove_item/", CartRemoveItem);
         root.MapPost("/carts/clear/", CartClear);
         root.MapPost("/carts/checkout/", CartCheckout);
@@ -123,12 +125,96 @@ public static class ShopEndpoints
         group.MapPost("/order-packages/", CreateOrderPackage);
         group.MapPost("/order-packages/calculate_shipping/", CalculateOrderPackagesShipping);
         group.MapPost("/order-packages/update_order_shipping/", UpdateOrderShippingFromPackages);
-        group.MapGet("/returns/", () => Results.Ok(Array.Empty<object>()));
+        group.MapGet("/order-packages", ListOrderPackages);
+        group.MapGet("/order-packages/{id:int}", GetOrderPackage);
 
         root.MapPost("/order-packages/", CreateOrderPackage);
         root.MapPost("/order-packages/calculate_shipping/", CalculateOrderPackagesShipping);
         root.MapPost("/order-packages/update_order_shipping/", UpdateOrderShippingFromPackages);
-        root.MapGet("/returns/", () => Results.Ok(Array.Empty<object>()));
+        root.MapGet("/order-packages", ListOrderPackages);
+        root.MapGet("/order-packages/{id:int}", GetOrderPackage);
+
+        // Orders - extended
+        group.MapGet("/orders/dashboard-stats", GetOrderDashboardStats);
+        group.MapPost("/orders/{id:int}/mark_paid", MarkOrderPaid);
+        root.MapGet("/orders/dashboard-stats", GetOrderDashboardStats);
+        root.MapPost("/orders/{id:int}/mark_paid", MarkOrderPaid);
+
+        // Product Tags - extended
+        group.MapGet("/products/tags/{id:int}", GetProductTag);
+        group.MapPatch("/products/tags/{id:int}", PatchProductTag);
+        group.MapDelete("/products/tags/{id:int}", DeleteProductTag);
+        root.MapGet("/products/tags/{id:int}", GetProductTag);
+        root.MapPatch("/products/tags/{id:int}", PatchProductTag);
+        root.MapDelete("/products/tags/{id:int}", DeleteProductTag);
+
+        // Product Reviews (admin)
+        group.MapGet("/reviews", ListProductReviews);
+        group.MapGet("/reviews/{id:int}", GetProductReview);
+        group.MapPatch("/reviews/{id:int}", PatchProductReview);
+        group.MapDelete("/reviews/{id:int}", DeleteProductReview);
+        group.MapPost("/reviews/{id:int}/approve", ApproveProductReview);
+        group.MapPost("/reviews/{id:int}/reject", RejectProductReview);
+        root.MapGet("/reviews", ListProductReviews);
+        root.MapGet("/reviews/{id:int}", GetProductReview);
+        root.MapPatch("/reviews/{id:int}", PatchProductReview);
+        root.MapDelete("/reviews/{id:int}", DeleteProductReview);
+        root.MapPost("/reviews/{id:int}/approve", ApproveProductReview);
+        root.MapPost("/reviews/{id:int}/reject", RejectProductReview);
+
+        // Collections
+        group.MapGet("/collections", ListCollections);
+        group.MapPost("/collections/", CreateCollection);
+        group.MapGet("/collections/{id:int}", GetCollection);
+        group.MapPatch("/collections/{id:int}", PatchCollection);
+        group.MapDelete("/collections/{id:int}", DeleteCollection);
+        root.MapGet("/collections", ListCollections);
+        root.MapPost("/collections/", CreateCollection);
+        root.MapGet("/collections/{id:int}", GetCollection);
+        root.MapPatch("/collections/{id:int}", PatchCollection);
+        root.MapDelete("/collections/{id:int}", DeleteCollection);
+
+        // Returns
+        group.MapGet("/returns/", ListReturns);
+        group.MapPost("/returns/", CreateReturn);
+        group.MapGet("/returns/{id:int}", GetReturn);
+        group.MapPatch("/returns/{id:int}", PatchReturn);
+        group.MapPost("/returns/{id:int}/approve", ApproveReturn);
+        group.MapPost("/returns/{id:int}/reject", RejectReturn);
+        group.MapPost("/returns/{id:int}/process_refund", ProcessReturnRefund);
+        root.MapGet("/returns/", ListReturns);
+        root.MapPost("/returns/", CreateReturn);
+        root.MapGet("/returns/{id:int}", GetReturn);
+        root.MapPatch("/returns/{id:int}", PatchReturn);
+        root.MapPost("/returns/{id:int}/approve", ApproveReturn);
+        root.MapPost("/returns/{id:int}/reject", RejectReturn);
+        root.MapPost("/returns/{id:int}/process_refund", ProcessReturnRefund);
+
+        // Return Items
+        group.MapGet("/return-items", ListReturnItems);
+        group.MapPost("/return-items/", CreateReturnItem);
+        root.MapGet("/return-items", ListReturnItems);
+        root.MapPost("/return-items/", CreateReturnItem);
+
+        // Channel Listings
+        group.MapGet("/channel-listings", ListChannelListings);
+        group.MapPost("/channel-listings/", CreateChannelListing);
+        group.MapDelete("/channel-listings/{id:int}", DeleteChannelListing);
+        root.MapGet("/channel-listings", ListChannelListings);
+        root.MapPost("/channel-listings/", CreateChannelListing);
+        root.MapDelete("/channel-listings/{id:int}", DeleteChannelListing);
+
+        // Sales Channels - extended
+        group.MapGet("/sales-channels/{id:int}", GetSalesChannel);
+        group.MapPatch("/sales-channels/{id:int}", PatchSalesChannel);
+        group.MapDelete("/sales-channels/{id:int}", DeleteSalesChannel);
+        root.MapGet("/sales-channels/{id:int}", GetSalesChannel);
+        root.MapPatch("/sales-channels/{id:int}", PatchSalesChannel);
+        root.MapDelete("/sales-channels/{id:int}", DeleteSalesChannel);
+
+        // Variants - extended
+        group.MapDelete("/variants/{id:int}", DeleteVariant);
+        root.MapDelete("/variants/{id:int}", DeleteVariant);
     }
 
     private static async Task<IResult> ListCategories(BfgDbContext db, HttpContext ctx, HttpRequest req, CancellationToken ct)
@@ -691,6 +777,16 @@ public static class ShopEndpoints
         }
     }
 
+    private static async Task<IResult> CartUpdateItem(CartService carts, HttpContext ctx, CancellationToken ct)
+    {
+        var body = await ctx.Request.ReadFromJsonAsync<CartUpdateItemBody>(ct);
+        if (body is not { item_id: > 0 }) return Results.BadRequest();
+        var qty = body.quantity ?? 1;
+        var r = await carts.UpdateLineQuantityAsync(body.item_id, qty, ct);
+        if (!r.Success) return Results.NotFound();
+        return Results.Ok(CartJson.Detail(r.Detail!));
+    }
+
     private static async Task<IResult> CartRemoveItem(CartService carts, HttpContext ctx, CancellationToken ct)
     {
         var body = await ctx.Request.ReadFromJsonAsync<CartRemoveItemBody>(ct);
@@ -1047,6 +1143,7 @@ public static class ShopEndpoints
     private sealed record StorePatchBody(string? name);
     private sealed record StoreWarehousesBody(List<int>? warehouse_ids);
     private sealed record CartItemBody(int product, int? variant, int? quantity);
+    private sealed record CartUpdateItemBody(int item_id, int? quantity);
     private sealed record CartRemoveItemBody(int item_id);
     private sealed class CheckoutBody
     {
@@ -1137,4 +1234,493 @@ public static class ShopEndpoints
         return Results.Ok(new { id = item.Id, order = item.OrderId, product = item.ProductId, variant = item.VariantId, quantity = item.Quantity, unit_price = item.UnitPrice.ToString("F2"), total_price = item.TotalPrice.ToString("F2") });
     }
     private sealed record OrderItemInput(int product, int? variant, int? quantity);
+
+    // ── Order Packages list/detail ────────────────────────────────────────────
+
+    private static async Task<IResult> ListOrderPackages(BfgDbContext db, HttpContext ctx, HttpRequest req, CancellationToken ct)
+    {
+        var wid = WorkspaceMiddleware.GetWorkspaceId(ctx);
+        var orderIds = wid.HasValue
+            ? await db.Orders.AsNoTracking().Where(o => o.WorkspaceId == wid.Value).Select(o => o.Id).ToListAsync(ct)
+            : null;
+        var query = db.DeliveryPackages.AsNoTracking();
+        if (orderIds != null) query = query.Where(p => p.OrderId.HasValue && orderIds.Contains(p.OrderId.Value));
+        var total = await query.CountAsync(ct);
+        var (page, pageSize) = Pagination.FromRequest(req);
+        var list = await query.OrderByDescending(p => p.Id).Skip((page - 1) * pageSize).Take(pageSize)
+            .Select(p => new { id = p.Id, order = p.OrderId, order_id = p.OrderId, template = p.TemplateId, template_id = p.TemplateId, weight = p.Weight != null ? p.Weight.Value.ToString("F2") : (string?)null, package_number = p.PackageNumber, freight_status = p.StatusId })
+            .ToListAsync(ct);
+        return Results.Ok(Pagination.Wrap(list, page, pageSize, total));
+    }
+
+    private static async Task<IResult> GetOrderPackage(BfgDbContext db, HttpContext ctx, int id, CancellationToken ct)
+    {
+        var wid = WorkspaceMiddleware.GetWorkspaceId(ctx);
+        var pkg = await db.DeliveryPackages.AsNoTracking().FirstOrDefaultAsync(p => p.Id == id, ct);
+        if (pkg == null) return Results.NotFound();
+        if (wid.HasValue && !await db.Orders.AnyAsync(o => o.Id == pkg.OrderId && o.WorkspaceId == wid.Value, ct))
+            return Results.NotFound();
+        return Results.Ok(new { id = pkg.Id, order = pkg.OrderId, order_id = pkg.OrderId, template = pkg.TemplateId, template_id = pkg.TemplateId, weight = pkg.Weight?.ToString("F2"), package_number = pkg.PackageNumber, freight_status = pkg.StatusId, length = pkg.Length?.ToString("F2"), width = pkg.Width?.ToString("F2"), height = pkg.Height?.ToString("F2"), pieces = pkg.Pieces, description = pkg.Description, notes = pkg.Notes });
+    }
+
+    // ── Orders - extended ────────────────────────────────────────────────────
+
+    private static async Task<IResult> GetOrderDashboardStats(BfgDbContext db, HttpContext ctx, CancellationToken ct)
+    {
+        var wid = WorkspaceMiddleware.GetWorkspaceId(ctx);
+        var query = db.Orders.AsNoTracking().Where(o => !wid.HasValue || o.WorkspaceId == wid.Value);
+        var pending = await query.CountAsync(o => o.Status == "pending", ct);
+        var processing = await query.CountAsync(o => o.Status == "processing", ct);
+        var completed = await query.CountAsync(o => o.Status == "completed", ct);
+        var cancelled = await query.CountAsync(o => o.Status == "cancelled", ct);
+        var revenue = await query.Where(o => o.Status == "completed").SumAsync(o => (decimal?)o.TotalAmount, ct) ?? 0m;
+        return Results.Ok(new { pending, processing, completed, cancelled, total_revenue = revenue.ToString("F2") });
+    }
+
+    private static async Task<IResult> MarkOrderPaid(BfgDbContext db, HttpContext ctx, int id, CancellationToken ct)
+    {
+        var wid = WorkspaceMiddleware.GetWorkspaceId(ctx);
+        var o = await db.Orders.FirstOrDefaultAsync(x => x.Id == id && (!wid.HasValue || x.WorkspaceId == wid.Value), ct);
+        if (o == null) return Results.NotFound();
+        o.PaymentStatus = "paid";
+        o.UpdatedAt = DateTime.UtcNow;
+        await db.SaveChangesAsync(ct);
+        return Results.Ok(new { id = o.Id, order_number = o.OrderNumber, status = o.Status, payment_status = o.PaymentStatus });
+    }
+
+    // ── Product Tags - extended ───────────────────────────────────────────────
+
+    private static async Task<IResult> GetProductTag(BfgDbContext db, HttpContext ctx, int id, CancellationToken ct)
+    {
+        var wid = WorkspaceMiddleware.GetWorkspaceId(ctx);
+        var t = await db.ProductTags.AsNoTracking().FirstOrDefaultAsync(x => x.Id == id && (!wid.HasValue || x.WorkspaceId == wid.Value), ct);
+        if (t == null) return Results.NotFound();
+        return Results.Ok(new { id = t.Id, name = t.Name, slug = t.Slug, language = t.Language });
+    }
+
+    private static async Task<IResult> PatchProductTag(BfgDbContext db, HttpContext ctx, int id, CancellationToken ct)
+    {
+        var wid = WorkspaceMiddleware.GetWorkspaceId(ctx);
+        var t = await db.ProductTags.FirstOrDefaultAsync(x => x.Id == id && (!wid.HasValue || x.WorkspaceId == wid.Value), ct);
+        if (t == null) return Results.NotFound();
+        var body = await ctx.Request.ReadFromJsonAsync<ProductTagPatchBody>(ct);
+        if (body?.name != null) t.Name = body.name;
+        if (body?.slug != null) t.Slug = body.slug;
+        await db.SaveChangesAsync(ct);
+        return Results.Ok(new { id = t.Id, name = t.Name, slug = t.Slug, language = t.Language });
+    }
+
+    private static async Task<IResult> DeleteProductTag(BfgDbContext db, HttpContext ctx, int id, CancellationToken ct)
+    {
+        var wid = WorkspaceMiddleware.GetWorkspaceId(ctx);
+        var t = await db.ProductTags.FirstOrDefaultAsync(x => x.Id == id && (!wid.HasValue || x.WorkspaceId == wid.Value), ct);
+        if (t == null) return Results.NotFound();
+        db.ProductTags.Remove(t);
+        await db.SaveChangesAsync(ct);
+        return Results.NoContent();
+    }
+
+    // ── Product Reviews ───────────────────────────────────────────────────────
+
+    private static async Task<IResult> ListProductReviews(BfgDbContext db, HttpContext ctx, HttpRequest req, CancellationToken ct)
+    {
+        var wid = WorkspaceMiddleware.GetWorkspaceId(ctx);
+        var query = db.ProductReviews.AsNoTracking().Where(r => !wid.HasValue || r.WorkspaceId == wid.Value);
+        var total = await query.CountAsync(ct);
+        var (page, pageSize) = Pagination.FromRequest(req);
+        var list = await query.OrderByDescending(r => r.CreatedAt).Skip((page - 1) * pageSize).Take(pageSize)
+            .Select(r => new { id = r.Id, workspace = r.WorkspaceId, product = r.ProductId, customer = r.CustomerId, order = r.OrderId, rating = r.Rating, title = r.Title, comment = r.Comment, is_approved = r.IsApproved, is_verified_purchase = r.IsVerifiedPurchase, helpful_count = r.HelpfulCount, created_at = r.CreatedAt })
+            .ToListAsync(ct);
+        return Results.Ok(Pagination.Wrap(list, page, pageSize, total));
+    }
+
+    private static async Task<IResult> GetProductReview(BfgDbContext db, HttpContext ctx, int id, CancellationToken ct)
+    {
+        var wid = WorkspaceMiddleware.GetWorkspaceId(ctx);
+        var r = await db.ProductReviews.AsNoTracking().FirstOrDefaultAsync(x => x.Id == id && (!wid.HasValue || x.WorkspaceId == wid.Value), ct);
+        if (r == null) return Results.NotFound();
+        return Results.Ok(new { id = r.Id, workspace = r.WorkspaceId, product = r.ProductId, customer = r.CustomerId, order = r.OrderId, rating = r.Rating, title = r.Title, comment = r.Comment, is_approved = r.IsApproved, is_verified_purchase = r.IsVerifiedPurchase, helpful_count = r.HelpfulCount, created_at = r.CreatedAt, updated_at = r.UpdatedAt });
+    }
+
+    private static async Task<IResult> PatchProductReview(BfgDbContext db, HttpContext ctx, int id, CancellationToken ct)
+    {
+        var wid = WorkspaceMiddleware.GetWorkspaceId(ctx);
+        var r = await db.ProductReviews.FirstOrDefaultAsync(x => x.Id == id && (!wid.HasValue || x.WorkspaceId == wid.Value), ct);
+        if (r == null) return Results.NotFound();
+        var body = await ctx.Request.ReadFromJsonAsync<ProductReviewPatchBody>(ct);
+        if (body?.is_approved.HasValue == true) r.IsApproved = body.is_approved.Value;
+        if (body?.title != null) r.Title = body.title;
+        if (body?.comment != null) r.Comment = body.comment;
+        r.UpdatedAt = DateTime.UtcNow;
+        await db.SaveChangesAsync(ct);
+        return Results.Ok(new { id = r.Id, product = r.ProductId, customer = r.CustomerId, rating = r.Rating, title = r.Title, is_approved = r.IsApproved });
+    }
+
+    private static async Task<IResult> DeleteProductReview(BfgDbContext db, HttpContext ctx, int id, CancellationToken ct)
+    {
+        var wid = WorkspaceMiddleware.GetWorkspaceId(ctx);
+        var r = await db.ProductReviews.FirstOrDefaultAsync(x => x.Id == id && (!wid.HasValue || x.WorkspaceId == wid.Value), ct);
+        if (r == null) return Results.NotFound();
+        db.ProductReviews.Remove(r);
+        await db.SaveChangesAsync(ct);
+        return Results.NoContent();
+    }
+
+    private static async Task<IResult> ApproveProductReview(BfgDbContext db, HttpContext ctx, int id, CancellationToken ct)
+    {
+        var wid = WorkspaceMiddleware.GetWorkspaceId(ctx);
+        var r = await db.ProductReviews.FirstOrDefaultAsync(x => x.Id == id && (!wid.HasValue || x.WorkspaceId == wid.Value), ct);
+        if (r == null) return Results.NotFound();
+        r.IsApproved = true;
+        r.UpdatedAt = DateTime.UtcNow;
+        await db.SaveChangesAsync(ct);
+        return Results.Ok(new { id = r.Id, is_approved = r.IsApproved });
+    }
+
+    private static async Task<IResult> RejectProductReview(BfgDbContext db, HttpContext ctx, int id, CancellationToken ct)
+    {
+        var wid = WorkspaceMiddleware.GetWorkspaceId(ctx);
+        var r = await db.ProductReviews.FirstOrDefaultAsync(x => x.Id == id && (!wid.HasValue || x.WorkspaceId == wid.Value), ct);
+        if (r == null) return Results.NotFound();
+        r.IsApproved = false;
+        r.UpdatedAt = DateTime.UtcNow;
+        await db.SaveChangesAsync(ct);
+        return Results.Ok(new { id = r.Id, is_approved = r.IsApproved });
+    }
+
+    // ── Collections ──────────────────────────────────────────────────────────
+
+    private static async Task<IResult> ListCollections(BfgDbContext db, HttpContext ctx, HttpRequest req, CancellationToken ct)
+    {
+        var wid = WorkspaceMiddleware.GetWorkspaceId(ctx);
+        var query = db.Collections.AsNoTracking().Where(c => !wid.HasValue || c.WorkspaceId == wid.Value);
+        var total = await query.CountAsync(ct);
+        var (page, pageSize) = Pagination.FromRequest(req);
+        var list = await query.OrderBy(c => c.SortOrder).ThenBy(c => c.Id).Skip((page - 1) * pageSize).Take(pageSize)
+            .Select(c => new { id = c.Id, workspace = c.WorkspaceId, name = c.Name, slug = c.Slug, description = c.Description, is_active = c.IsActive, sort_order = c.SortOrder, created_at = c.CreatedAt })
+            .ToListAsync(ct);
+        return Results.Ok(Pagination.Wrap(list, page, pageSize, total));
+    }
+
+    private static async Task<IResult> CreateCollection(BfgDbContext db, HttpContext ctx, CancellationToken ct)
+    {
+        var wid = WorkspaceMiddleware.GetWorkspaceId(ctx);
+        if (!wid.HasValue) return Results.BadRequest();
+        var body = await ctx.Request.ReadFromJsonAsync<CollectionCreateBody>(ct);
+        if (body == null || string.IsNullOrWhiteSpace(body.name)) return Results.BadRequest(new { name = new[] { "Name is required." } });
+        var now = DateTime.UtcNow;
+        var c = new Collection
+        {
+            WorkspaceId = wid.Value,
+            Name = body.name,
+            Slug = body.slug ?? Slugify(body.name),
+            Description = body.description ?? "",
+            Image = "",
+            IsActive = body.is_active ?? true,
+            SortOrder = 100,
+            CreatedAt = now,
+            UpdatedAt = now
+        };
+        db.Collections.Add(c);
+        await db.SaveChangesAsync(ct);
+        return Results.Created("/api/v1/shop/collections/", new { id = c.Id, workspace = c.WorkspaceId, name = c.Name, slug = c.Slug, description = c.Description, is_active = c.IsActive, sort_order = c.SortOrder, created_at = c.CreatedAt });
+    }
+
+    private static async Task<IResult> GetCollection(BfgDbContext db, HttpContext ctx, int id, CancellationToken ct)
+    {
+        var wid = WorkspaceMiddleware.GetWorkspaceId(ctx);
+        var c = await db.Collections.AsNoTracking().FirstOrDefaultAsync(x => x.Id == id && (!wid.HasValue || x.WorkspaceId == wid.Value), ct);
+        if (c == null) return Results.NotFound();
+        var productIds = await db.CollectionProducts.Where(cp => cp.CollectionId == id).Select(cp => cp.ProductId).ToListAsync(ct);
+        return Results.Ok(new { id = c.Id, workspace = c.WorkspaceId, name = c.Name, slug = c.Slug, description = c.Description, is_active = c.IsActive, sort_order = c.SortOrder, product_ids = productIds, created_at = c.CreatedAt, updated_at = c.UpdatedAt });
+    }
+
+    private static async Task<IResult> PatchCollection(BfgDbContext db, HttpContext ctx, int id, CancellationToken ct)
+    {
+        var wid = WorkspaceMiddleware.GetWorkspaceId(ctx);
+        var c = await db.Collections.FirstOrDefaultAsync(x => x.Id == id && (!wid.HasValue || x.WorkspaceId == wid.Value), ct);
+        if (c == null) return Results.NotFound();
+        var body = await ctx.Request.ReadFromJsonAsync<CollectionPatchBody>(ct);
+        if (body?.name != null) c.Name = body.name;
+        if (body?.slug != null) c.Slug = body.slug;
+        if (body?.description != null) c.Description = body.description;
+        if (body?.is_active.HasValue == true) c.IsActive = body.is_active.Value;
+        c.UpdatedAt = DateTime.UtcNow;
+        await db.SaveChangesAsync(ct);
+        return Results.Ok(new { id = c.Id, workspace = c.WorkspaceId, name = c.Name, slug = c.Slug, description = c.Description, is_active = c.IsActive });
+    }
+
+    private static async Task<IResult> DeleteCollection(BfgDbContext db, HttpContext ctx, int id, CancellationToken ct)
+    {
+        var wid = WorkspaceMiddleware.GetWorkspaceId(ctx);
+        var c = await db.Collections.FirstOrDefaultAsync(x => x.Id == id && (!wid.HasValue || x.WorkspaceId == wid.Value), ct);
+        if (c == null) return Results.NotFound();
+        db.Collections.Remove(c);
+        await db.SaveChangesAsync(ct);
+        return Results.NoContent();
+    }
+
+    // ── Returns ──────────────────────────────────────────────────────────────
+
+    private static async Task<IResult> ListReturns(BfgDbContext db, HttpContext ctx, HttpRequest req, CancellationToken ct)
+    {
+        var wid = WorkspaceMiddleware.GetWorkspaceId(ctx);
+        var query = db.Returns.AsNoTracking().Where(r => !wid.HasValue || r.WorkspaceId == wid.Value);
+        var total = await query.CountAsync(ct);
+        var (page, pageSize) = Pagination.FromRequest(req);
+        var list = await query.OrderByDescending(r => r.CreatedAt).Skip((page - 1) * pageSize).Take(pageSize)
+            .Select(r => new { id = r.Id, workspace = r.WorkspaceId, order = r.OrderId, customer = r.CustomerId, return_number = r.ReturnNumber, status = r.Status, reason_category = r.ReasonCategory, customer_note = r.CustomerNote, created_at = r.CreatedAt })
+            .ToListAsync(ct);
+        return Results.Ok(Pagination.Wrap(list, page, pageSize, total));
+    }
+
+    private static async Task<IResult> CreateReturn(BfgDbContext db, HttpContext ctx, CancellationToken ct)
+    {
+        var wid = WorkspaceMiddleware.GetWorkspaceId(ctx);
+        if (!wid.HasValue) return Results.BadRequest();
+        var body = await ctx.Request.ReadFromJsonAsync<ReturnCreateBody>(ct);
+        if (body == null || body.order_id <= 0) return Results.BadRequest(new { detail = "order_id is required." });
+        var order = await db.Orders.AsNoTracking().FirstOrDefaultAsync(o => o.Id == body.order_id && o.WorkspaceId == wid.Value, ct);
+        if (order == null) return Results.NotFound(new { detail = "Order not found." });
+        var now = DateTime.UtcNow;
+        var returnNum = $"RET-{body.order_id}-{Guid.NewGuid().ToString("N")[..8].ToUpper()}";
+        var ret = new Return
+        {
+            WorkspaceId = wid.Value,
+            OrderId = body.order_id,
+            CustomerId = order.CustomerId,
+            ReturnNumber = returnNum,
+            Status = "pending",
+            ReasonCategory = body.reason ?? "",
+            CustomerNote = body.notes ?? "",
+            CreatedAt = now,
+            UpdatedAt = now
+        };
+        db.Returns.Add(ret);
+        await db.SaveChangesAsync(ct);
+        if (body.items != null)
+        {
+            foreach (var it in body.items)
+            {
+                db.ReturnItems.Add(new ReturnItem
+                {
+                    ReturnRequestId = ret.Id,
+                    OrderItemId = it.order_item_id ?? 0,
+                    Quantity = it.quantity > 0 ? it.quantity : 1,
+                    Reason = it.reason ?? "",
+                    RestockAction = "restock"
+                });
+            }
+            await db.SaveChangesAsync(ct);
+        }
+        return Results.Created("/api/v1/shop/returns/", new { id = ret.Id, workspace = ret.WorkspaceId, order = ret.OrderId, return_number = ret.ReturnNumber, status = ret.Status, reason_category = ret.ReasonCategory, created_at = ret.CreatedAt });
+    }
+
+    private static async Task<IResult> GetReturn(BfgDbContext db, HttpContext ctx, int id, CancellationToken ct)
+    {
+        var wid = WorkspaceMiddleware.GetWorkspaceId(ctx);
+        var ret = await db.Returns.AsNoTracking().FirstOrDefaultAsync(r => r.Id == id && (!wid.HasValue || r.WorkspaceId == wid.Value), ct);
+        if (ret == null) return Results.NotFound();
+        var items = await db.ReturnItems.AsNoTracking().Where(i => i.ReturnRequestId == id)
+            .Select(i => new { id = i.Id, order_item = i.OrderItemId, quantity = i.Quantity, reason = i.Reason })
+            .ToListAsync(ct);
+        return Results.Ok(new { id = ret.Id, workspace = ret.WorkspaceId, order = ret.OrderId, customer = ret.CustomerId, return_number = ret.ReturnNumber, status = ret.Status, reason_category = ret.ReasonCategory, customer_note = ret.CustomerNote, admin_note = ret.AdminNote, items, created_at = ret.CreatedAt, updated_at = ret.UpdatedAt });
+    }
+
+    private static async Task<IResult> PatchReturn(BfgDbContext db, HttpContext ctx, int id, CancellationToken ct)
+    {
+        var wid = WorkspaceMiddleware.GetWorkspaceId(ctx);
+        var ret = await db.Returns.FirstOrDefaultAsync(r => r.Id == id && (!wid.HasValue || r.WorkspaceId == wid.Value), ct);
+        if (ret == null) return Results.NotFound();
+        var body = await ctx.Request.ReadFromJsonAsync<ReturnPatchBody>(ct);
+        if (body?.status != null) ret.Status = body.status;
+        if (body?.notes != null) ret.CustomerNote = body.notes;
+        ret.UpdatedAt = DateTime.UtcNow;
+        await db.SaveChangesAsync(ct);
+        return Results.Ok(new { id = ret.Id, order = ret.OrderId, return_number = ret.ReturnNumber, status = ret.Status, customer_note = ret.CustomerNote });
+    }
+
+    private static async Task<IResult> ApproveReturn(BfgDbContext db, HttpContext ctx, int id, CancellationToken ct)
+    {
+        var wid = WorkspaceMiddleware.GetWorkspaceId(ctx);
+        var ret = await db.Returns.FirstOrDefaultAsync(r => r.Id == id && (!wid.HasValue || r.WorkspaceId == wid.Value), ct);
+        if (ret == null) return Results.NotFound();
+        ret.Status = "approved";
+        ret.UpdatedAt = DateTime.UtcNow;
+        await db.SaveChangesAsync(ct);
+        return Results.Ok(new { id = ret.Id, return_number = ret.ReturnNumber, status = ret.Status });
+    }
+
+    private static async Task<IResult> RejectReturn(BfgDbContext db, HttpContext ctx, int id, CancellationToken ct)
+    {
+        var wid = WorkspaceMiddleware.GetWorkspaceId(ctx);
+        var ret = await db.Returns.FirstOrDefaultAsync(r => r.Id == id && (!wid.HasValue || r.WorkspaceId == wid.Value), ct);
+        if (ret == null) return Results.NotFound();
+        ret.Status = "rejected";
+        ret.UpdatedAt = DateTime.UtcNow;
+        await db.SaveChangesAsync(ct);
+        return Results.Ok(new { id = ret.Id, return_number = ret.ReturnNumber, status = ret.Status });
+    }
+
+    private static async Task<IResult> ProcessReturnRefund(BfgDbContext db, HttpContext ctx, int id, CancellationToken ct)
+    {
+        var wid = WorkspaceMiddleware.GetWorkspaceId(ctx);
+        var ret = await db.Returns.FirstOrDefaultAsync(r => r.Id == id && (!wid.HasValue || r.WorkspaceId == wid.Value), ct);
+        if (ret == null) return Results.NotFound();
+        ret.Status = "refunded";
+        ret.UpdatedAt = DateTime.UtcNow;
+        await db.SaveChangesAsync(ct);
+        return Results.Ok(new { id = ret.Id, return_number = ret.ReturnNumber, status = ret.Status });
+    }
+
+    // ── Return Items ─────────────────────────────────────────────────────────
+
+    private static async Task<IResult> ListReturnItems(BfgDbContext db, HttpContext ctx, HttpRequest req, CancellationToken ct)
+    {
+        var wid = WorkspaceMiddleware.GetWorkspaceId(ctx);
+        var returnIdFilter = req.Query["return_id"].FirstOrDefault();
+        var query = db.ReturnItems.AsNoTracking();
+        if (!string.IsNullOrEmpty(returnIdFilter) && int.TryParse(returnIdFilter, out var rid))
+            query = query.Where(i => i.ReturnRequestId == rid);
+        else if (wid.HasValue)
+        {
+            var returnIds = await db.Returns.AsNoTracking().Where(r => r.WorkspaceId == wid.Value).Select(r => r.Id).ToListAsync(ct);
+            query = query.Where(i => returnIds.Contains(i.ReturnRequestId));
+        }
+        var list = await query.Select(i => new { id = i.Id, return_id = i.ReturnRequestId, order_item = i.OrderItemId, quantity = i.Quantity, reason = i.Reason }).ToListAsync(ct);
+        return Results.Ok(new { count = list.Count, results = list });
+    }
+
+    private static async Task<IResult> CreateReturnItem(BfgDbContext db, HttpContext ctx, CancellationToken ct)
+    {
+        var wid = WorkspaceMiddleware.GetWorkspaceId(ctx);
+        if (!wid.HasValue) return Results.BadRequest();
+        var body = await ctx.Request.ReadFromJsonAsync<ReturnItemCreateBody>(ct);
+        if (body == null || body.return_id <= 0) return Results.BadRequest(new { detail = "return_id is required." });
+        var ret = await db.Returns.AsNoTracking().FirstOrDefaultAsync(r => r.Id == body.return_id && r.WorkspaceId == wid.Value, ct);
+        if (ret == null) return Results.NotFound(new { detail = "Return not found." });
+        var item = new ReturnItem
+        {
+            ReturnRequestId = body.return_id,
+            OrderItemId = body.order_item_id ?? 0,
+            Quantity = body.quantity > 0 ? body.quantity : 1,
+            Reason = body.reason ?? "",
+            RestockAction = "restock"
+        };
+        db.ReturnItems.Add(item);
+        await db.SaveChangesAsync(ct);
+        return Results.Created("/api/v1/shop/return-items/", new { id = item.Id, return_id = item.ReturnRequestId, order_item = item.OrderItemId, quantity = item.Quantity, reason = item.Reason });
+    }
+
+    // ── Channel Listings ─────────────────────────────────────────────────────
+
+    private static async Task<IResult> ListChannelListings(BfgDbContext db, HttpContext ctx, HttpRequest req, CancellationToken ct)
+    {
+        var wid = WorkspaceMiddleware.GetWorkspaceId(ctx);
+        var query = db.ProductChannelListings.AsNoTracking();
+        if (wid.HasValue)
+        {
+            var channelIds = await db.SalesChannels.AsNoTracking().Where(s => s.WorkspaceId == wid.Value).Select(s => s.Id).ToListAsync(ct);
+            query = query.Where(l => channelIds.Contains(l.ChannelId));
+        }
+        var total = await query.CountAsync(ct);
+        var (page, pageSize) = Pagination.FromRequest(req);
+        var list = await query.OrderByDescending(l => l.CreatedAt).Skip((page - 1) * pageSize).Take(pageSize)
+            .Select(l => new { id = l.Id, product = l.ProductId, channel = l.ChannelId, available_at = l.AvailableAt, created_at = l.CreatedAt })
+            .ToListAsync(ct);
+        return Results.Ok(Pagination.Wrap(list, page, pageSize, total));
+    }
+
+    private static async Task<IResult> CreateChannelListing(BfgDbContext db, HttpContext ctx, CancellationToken ct)
+    {
+        var wid = WorkspaceMiddleware.GetWorkspaceId(ctx);
+        if (!wid.HasValue) return Results.BadRequest();
+        var body = await ctx.Request.ReadFromJsonAsync<ChannelListingCreateBody>(ct);
+        if (body == null || body.product_id <= 0 || body.channel_id <= 0)
+            return Results.BadRequest(new { detail = "product_id and channel_id are required." });
+        var channel = await db.SalesChannels.AsNoTracking().FirstOrDefaultAsync(s => s.Id == body.channel_id && s.WorkspaceId == wid.Value, ct);
+        if (channel == null) return Results.NotFound(new { detail = "Channel not found." });
+        var product = await db.Products.AsNoTracking().FirstOrDefaultAsync(p => p.Id == body.product_id && p.WorkspaceId == wid.Value, ct);
+        if (product == null) return Results.NotFound(new { detail = "Product not found." });
+        var existing = await db.ProductChannelListings.FirstOrDefaultAsync(l => l.ChannelId == body.channel_id && l.ProductId == body.product_id, ct);
+        if (existing != null)
+            return Results.Ok(new { id = existing.Id, product = existing.ProductId, channel = existing.ChannelId, created = false, created_at = existing.CreatedAt });
+        var listing = new ProductChannelListing { ProductId = body.product_id, ChannelId = body.channel_id, AvailableAt = body.available_at, CreatedAt = DateTime.UtcNow };
+        db.ProductChannelListings.Add(listing);
+        await db.SaveChangesAsync(ct);
+        return Results.Created("/api/v1/shop/channel-listings/", new { id = listing.Id, product = listing.ProductId, channel = listing.ChannelId, available_at = listing.AvailableAt, created_at = listing.CreatedAt });
+    }
+
+    private static async Task<IResult> DeleteChannelListing(BfgDbContext db, HttpContext ctx, int id, CancellationToken ct)
+    {
+        var wid = WorkspaceMiddleware.GetWorkspaceId(ctx);
+        var listing = await db.ProductChannelListings.FirstOrDefaultAsync(l => l.Id == id, ct);
+        if (listing == null) return Results.NotFound();
+        if (wid.HasValue && !await db.SalesChannels.AnyAsync(s => s.Id == listing.ChannelId && s.WorkspaceId == wid.Value, ct))
+            return Results.NotFound();
+        db.ProductChannelListings.Remove(listing);
+        await db.SaveChangesAsync(ct);
+        return Results.NoContent();
+    }
+
+    // ── Sales Channels - extended ────────────────────────────────────────────
+
+    private static async Task<IResult> GetSalesChannel(BfgDbContext db, HttpContext ctx, int id, CancellationToken ct)
+    {
+        var wid = WorkspaceMiddleware.GetWorkspaceId(ctx);
+        var ch = await db.SalesChannels.AsNoTracking().FirstOrDefaultAsync(s => s.Id == id && (!wid.HasValue || s.WorkspaceId == wid.Value), ct);
+        if (ch == null) return Results.NotFound();
+        return Results.Ok(new { id = ch.Id, workspace = ch.WorkspaceId, name = ch.Name, code = ch.Code, channel_type = ch.ChannelType, description = ch.Description, is_active = ch.IsActive, is_default = ch.IsDefault, created_at = ch.CreatedAt });
+    }
+
+    private static async Task<IResult> PatchSalesChannel(BfgDbContext db, HttpContext ctx, int id, CancellationToken ct)
+    {
+        var wid = WorkspaceMiddleware.GetWorkspaceId(ctx);
+        var ch = await db.SalesChannels.FirstOrDefaultAsync(s => s.Id == id && (!wid.HasValue || s.WorkspaceId == wid.Value), ct);
+        if (ch == null) return Results.NotFound();
+        var body = await ctx.Request.ReadFromJsonAsync<SalesChannelPatchBody>(ct);
+        if (body?.name != null) ch.Name = body.name;
+        if (body?.code != null) ch.Code = body.code;
+        if (body?.channel_type != null) ch.ChannelType = body.channel_type;
+        if (body?.description != null) ch.Description = body.description;
+        if (body?.is_active.HasValue == true) ch.IsActive = body.is_active.Value;
+        if (body?.is_default.HasValue == true) ch.IsDefault = body.is_default.Value;
+        ch.UpdatedAt = DateTime.UtcNow;
+        await db.SaveChangesAsync(ct);
+        return Results.Ok(new { id = ch.Id, name = ch.Name, code = ch.Code, channel_type = ch.ChannelType, is_active = ch.IsActive, is_default = ch.IsDefault });
+    }
+
+    private static async Task<IResult> DeleteSalesChannel(BfgDbContext db, HttpContext ctx, int id, CancellationToken ct)
+    {
+        var wid = WorkspaceMiddleware.GetWorkspaceId(ctx);
+        var ch = await db.SalesChannels.FirstOrDefaultAsync(s => s.Id == id && (!wid.HasValue || s.WorkspaceId == wid.Value), ct);
+        if (ch == null) return Results.NotFound();
+        db.SalesChannels.Remove(ch);
+        await db.SaveChangesAsync(ct);
+        return Results.NoContent();
+    }
+
+    // ── Variants - extended ───────────────────────────────────────────────────
+
+    private static async Task<IResult> DeleteVariant(BfgDbContext db, HttpContext ctx, int id, CancellationToken ct)
+    {
+        var v = await db.Variants.FirstOrDefaultAsync(x => x.Id == id, ct);
+        if (v == null) return Results.NotFound();
+        v.IsActive = false;
+        await db.SaveChangesAsync(ct);
+        return Results.NoContent();
+    }
+
+    // ── Additional record types ───────────────────────────────────────────────
+
+    private sealed record ProductTagPatchBody(string? name, string? slug);
+    private sealed record ProductReviewPatchBody(bool? is_approved, string? title, string? comment);
+    private sealed record CollectionCreateBody(string? name, string? slug, string? description, bool? is_active);
+    private sealed record CollectionPatchBody(string? name, string? slug, string? description, bool? is_active);
+    private sealed record ReturnCreateBody(int order_id, string? reason, string? notes, List<ReturnItemInput>? items);
+    private sealed record ReturnItemInput(int? order_item_id, int quantity, string? reason, string? condition, string? notes);
+    private sealed record ReturnPatchBody(string? status, string? notes);
+    private sealed record ReturnItemCreateBody(int return_id, int? order_item_id, int quantity, string? reason, string? condition, string? notes);
+    private sealed record ChannelListingCreateBody(int product_id, int channel_id, DateTime? available_at);
+    private sealed record SalesChannelPatchBody(string? name, string? code, string? channel_type, string? description, bool? is_active, bool? is_default);
 }

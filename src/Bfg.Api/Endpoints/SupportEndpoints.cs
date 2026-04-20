@@ -15,9 +15,24 @@ public static class SupportEndpoints
         group.MapPost("/tickets/", CreateTicket);
         group.MapGet("/tickets/{id:int}", GetTicket);
         group.MapPatch("/tickets/{id:int}", PatchTicket);
+        group.MapDelete("/tickets/{id:int}", DeleteTicket);
 
         group.MapGet("/tickets/{id:int}/messages", ListTicketMessages);
         group.MapPost("/tickets/{id:int}/messages/", CreateTicketMessage);
+
+        group.MapGet("/ticket-categories", ListTicketCategories);
+        group.MapPost("/ticket-categories/", CreateTicketCategory);
+        group.MapGet("/ticket-categories/{id:int}", GetTicketCategory);
+        group.MapPatch("/ticket-categories/{id:int}", PatchTicketCategory);
+        group.MapDelete("/ticket-categories/{id:int}", DeleteTicketCategory);
+
+        group.MapGet("/ticket-priorities", ListTicketPriorities);
+        group.MapPost("/ticket-priorities/", CreateTicketPriority);
+        group.MapGet("/ticket-priorities/{id:int}", GetTicketPriority);
+        group.MapPatch("/ticket-priorities/{id:int}", PatchTicketPriority);
+        group.MapDelete("/ticket-priorities/{id:int}", DeleteTicketPriority);
+
+        group.MapGet("/options", GetSupportOptions);
     }
 
     private static async Task<IResult> ListTickets(BfgDbContext db, HttpContext ctx, string? status, CancellationToken ct)
@@ -79,6 +94,17 @@ public static class SupportEndpoints
         return Results.Ok(new { id = t.Id, subject = t.Subject, description = t.Description, status = t.Status });
     }
 
+    private static async Task<IResult> DeleteTicket(BfgDbContext db, HttpContext ctx, int id, CancellationToken ct)
+    {
+        var wid = WorkspaceMiddleware.GetWorkspaceId(ctx);
+        var t = await db.SupportTickets.FirstOrDefaultAsync(x => x.Id == id && (!wid.HasValue || x.WorkspaceId == wid.Value), ct);
+        if (t == null) return Results.NotFound();
+        t.Status = "closed";
+        t.UpdatedAt = DateTime.UtcNow;
+        await db.SaveChangesAsync(ct);
+        return Results.NoContent();
+    }
+
     private static async Task<IResult> ListTicketMessages(BfgDbContext db, HttpContext ctx, int id, CancellationToken ct)
     {
         var wid = WorkspaceMiddleware.GetWorkspaceId(ctx);
@@ -112,7 +138,161 @@ public static class SupportEndpoints
         return Results.Created($"/api/v1/support/tickets/{id}/messages/", new { id = m.Id, body = m.Body });
     }
 
+    // --- Ticket Categories ---
+
+    private static async Task<IResult> ListTicketCategories(BfgDbContext db, HttpContext ctx, CancellationToken ct)
+    {
+        var wid = WorkspaceMiddleware.GetWorkspaceId(ctx);
+        var list = await db.TicketCategories.AsNoTracking()
+            .Where(c => !wid.HasValue || c.WorkspaceId == wid.Value)
+            .OrderBy(c => c.SortOrder)
+            .Select(c => new { id = c.Id, name = c.Name, description = c.Description, order = c.SortOrder, is_active = c.IsActive })
+            .ToListAsync(ct);
+        return Results.Ok(list);
+    }
+
+    private static async Task<IResult> CreateTicketCategory(BfgDbContext db, HttpContext ctx, CancellationToken ct)
+    {
+        var wid = WorkspaceMiddleware.GetWorkspaceId(ctx);
+        if (!wid.HasValue) return Results.BadRequest();
+        var body = await ctx.Request.ReadFromJsonAsync<TicketCategoryCreateBody>(ct);
+        if (body == null) return Results.BadRequest();
+        var c = new TicketCategory
+        {
+            WorkspaceId = wid.Value,
+            Name = body.name ?? "",
+            Description = body.description ?? "",
+            SortOrder = body.order ?? 0,
+            IsActive = body.is_active ?? true
+        };
+        db.TicketCategories.Add(c);
+        await db.SaveChangesAsync(ct);
+        return Results.Created("/api/v1/support/ticket-categories/", new { id = c.Id, name = c.Name, description = c.Description, order = c.SortOrder, is_active = c.IsActive });
+    }
+
+    private static async Task<IResult> GetTicketCategory(BfgDbContext db, HttpContext ctx, int id, CancellationToken ct)
+    {
+        var wid = WorkspaceMiddleware.GetWorkspaceId(ctx);
+        var c = await db.TicketCategories.AsNoTracking().FirstOrDefaultAsync(x => x.Id == id && (!wid.HasValue || x.WorkspaceId == wid.Value), ct);
+        if (c == null) return Results.NotFound();
+        return Results.Ok(new { id = c.Id, name = c.Name, description = c.Description, order = c.SortOrder, is_active = c.IsActive });
+    }
+
+    private static async Task<IResult> PatchTicketCategory(BfgDbContext db, HttpContext ctx, int id, CancellationToken ct)
+    {
+        var wid = WorkspaceMiddleware.GetWorkspaceId(ctx);
+        var c = await db.TicketCategories.FirstOrDefaultAsync(x => x.Id == id && (!wid.HasValue || x.WorkspaceId == wid.Value), ct);
+        if (c == null) return Results.NotFound();
+        var body = await ctx.Request.ReadFromJsonAsync<TicketCategoryPatchBody>(ct);
+        if (body != null)
+        {
+            if (body.name != null) c.Name = body.name;
+            if (body.description != null) c.Description = body.description;
+            if (body.order.HasValue) c.SortOrder = body.order.Value;
+            if (body.is_active.HasValue) c.IsActive = body.is_active.Value;
+            await db.SaveChangesAsync(ct);
+        }
+        return Results.Ok(new { id = c.Id, name = c.Name, description = c.Description, order = c.SortOrder, is_active = c.IsActive });
+    }
+
+    private static async Task<IResult> DeleteTicketCategory(BfgDbContext db, HttpContext ctx, int id, CancellationToken ct)
+    {
+        var wid = WorkspaceMiddleware.GetWorkspaceId(ctx);
+        var c = await db.TicketCategories.FirstOrDefaultAsync(x => x.Id == id && (!wid.HasValue || x.WorkspaceId == wid.Value), ct);
+        if (c == null) return Results.NotFound();
+        c.IsActive = false;
+        await db.SaveChangesAsync(ct);
+        return Results.NoContent();
+    }
+
+    // --- Ticket Priorities ---
+
+    private static async Task<IResult> ListTicketPriorities(BfgDbContext db, HttpContext ctx, CancellationToken ct)
+    {
+        var wid = WorkspaceMiddleware.GetWorkspaceId(ctx);
+        var list = await db.TicketPriorities.AsNoTracking()
+            .Where(p => !wid.HasValue || p.WorkspaceId == wid.Value)
+            .OrderBy(p => p.Level)
+            .Select(p => new { id = p.Id, name = p.Name, level = p.Level, color = p.Color, response_time_hours = p.ResponseTimeHours, resolution_time_hours = p.ResolutionTimeHours, is_active = p.IsActive })
+            .ToListAsync(ct);
+        return Results.Ok(list);
+    }
+
+    private static async Task<IResult> CreateTicketPriority(BfgDbContext db, HttpContext ctx, CancellationToken ct)
+    {
+        var wid = WorkspaceMiddleware.GetWorkspaceId(ctx);
+        if (!wid.HasValue) return Results.BadRequest();
+        var body = await ctx.Request.ReadFromJsonAsync<TicketPriorityCreateBody>(ct);
+        if (body == null) return Results.BadRequest();
+        var p = new TicketPriority
+        {
+            WorkspaceId = wid.Value,
+            Name = body.name ?? "",
+            Level = body.level ?? 1,
+            Color = body.color ?? "#000000",
+            ResponseTimeHours = body.response_time_hours ?? 24,
+            ResolutionTimeHours = body.resolution_time_hours ?? 72,
+            IsActive = true
+        };
+        db.TicketPriorities.Add(p);
+        await db.SaveChangesAsync(ct);
+        return Results.Created("/api/v1/support/ticket-priorities/", new { id = p.Id, name = p.Name, level = p.Level, color = p.Color, response_time_hours = p.ResponseTimeHours, resolution_time_hours = p.ResolutionTimeHours, is_active = p.IsActive });
+    }
+
+    private static async Task<IResult> GetTicketPriority(BfgDbContext db, HttpContext ctx, int id, CancellationToken ct)
+    {
+        var wid = WorkspaceMiddleware.GetWorkspaceId(ctx);
+        var p = await db.TicketPriorities.AsNoTracking().FirstOrDefaultAsync(x => x.Id == id && (!wid.HasValue || x.WorkspaceId == wid.Value), ct);
+        if (p == null) return Results.NotFound();
+        return Results.Ok(new { id = p.Id, name = p.Name, level = p.Level, color = p.Color, response_time_hours = p.ResponseTimeHours, resolution_time_hours = p.ResolutionTimeHours, is_active = p.IsActive });
+    }
+
+    private static async Task<IResult> PatchTicketPriority(BfgDbContext db, HttpContext ctx, int id, CancellationToken ct)
+    {
+        var wid = WorkspaceMiddleware.GetWorkspaceId(ctx);
+        var p = await db.TicketPriorities.FirstOrDefaultAsync(x => x.Id == id && (!wid.HasValue || x.WorkspaceId == wid.Value), ct);
+        if (p == null) return Results.NotFound();
+        var body = await ctx.Request.ReadFromJsonAsync<TicketPriorityPatchBody>(ct);
+        if (body != null)
+        {
+            if (body.name != null) p.Name = body.name;
+            if (body.level.HasValue) p.Level = body.level.Value;
+            if (body.color != null) p.Color = body.color;
+            if (body.response_time_hours.HasValue) p.ResponseTimeHours = body.response_time_hours.Value;
+            if (body.resolution_time_hours.HasValue) p.ResolutionTimeHours = body.resolution_time_hours.Value;
+            if (body.is_active.HasValue) p.IsActive = body.is_active.Value;
+            await db.SaveChangesAsync(ct);
+        }
+        return Results.Ok(new { id = p.Id, name = p.Name, level = p.Level, color = p.Color, response_time_hours = p.ResponseTimeHours, resolution_time_hours = p.ResolutionTimeHours, is_active = p.IsActive });
+    }
+
+    private static async Task<IResult> DeleteTicketPriority(BfgDbContext db, HttpContext ctx, int id, CancellationToken ct)
+    {
+        var wid = WorkspaceMiddleware.GetWorkspaceId(ctx);
+        var p = await db.TicketPriorities.FirstOrDefaultAsync(x => x.Id == id && (!wid.HasValue || x.WorkspaceId == wid.Value), ct);
+        if (p == null) return Results.NotFound();
+        p.IsActive = false;
+        await db.SaveChangesAsync(ct);
+        return Results.NoContent();
+    }
+
+    // --- Support Options ---
+
+    private static IResult GetSupportOptions()
+    {
+        var options = new[]
+        {
+            new { type = "chat", available = true },
+            new { type = "email", available = true }
+        };
+        return Results.Ok(options);
+    }
+
     private sealed record TicketCreateBody(string? subject, string? description, int customer, string? status, string? channel);
     private sealed record TicketPatchBody(string? status, string? description);
     private sealed record TicketMessageCreateBody(string? message, bool? is_internal);
+    private sealed record TicketCategoryCreateBody(string? name, string? description, int? order, bool? is_active);
+    private sealed record TicketCategoryPatchBody(string? name, string? description, int? order, bool? is_active);
+    private sealed record TicketPriorityCreateBody(string? name, int? level, string? color, int? response_time_hours, int? resolution_time_hours);
+    private sealed record TicketPriorityPatchBody(string? name, int? level, string? color, int? response_time_hours, int? resolution_time_hours, bool? is_active);
 }

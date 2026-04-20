@@ -6,6 +6,7 @@ public class Inquiry
     public int WorkspaceId { get; set; }
     public string Name { get; set; } = "";
     public string Email { get; set; } = "";
+    public string Phone { get; set; } = "";
     public string Subject { get; set; } = "";
     public string Message { get; set; } = "";
     public string Status { get; set; } = "new";

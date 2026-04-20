@@ -1,3 +1,4 @@
+using System.Security.Claims;
 using System.Text.Json;
 using Bfg.Api.Infrastructure;
 using Bfg.Api.Middleware;
@@ -14,40 +15,111 @@ public static class MarketingEndpoints
         var group = app.MapGroup("/api/v1/marketing").WithTags("Marketing").RequireAuthorization();
         var root = app.MapGroup("/api/v1").WithTags("Marketing").RequireAuthorization();
 
+        // Campaigns
         group.MapGet("/campaigns", ListCampaigns);
         group.MapPost("/campaigns/", CreateCampaign);
         group.MapGet("/campaigns/{id:int}", GetCampaign);
         group.MapPatch("/campaigns/{id:int}", PatchCampaign);
+        group.MapDelete("/campaigns/{id:int}", DeleteCampaign);
+        group.MapPost("/campaigns/{id:int}/join", JoinCampaign);
+        group.MapGet("/campaigns/{id:int}/participations", ListCampaignParticipations);
+        group.MapPost("/campaigns/{id:int}/redeem", RedeemCampaign);
+        group.MapGet("/campaigns/{id:int}/stamp-progress", GetCampaignStampProgress);
 
         root.MapGet("/campaigns", ListCampaigns);
         root.MapPost("/campaigns/", CreateCampaign);
         root.MapGet("/campaigns/{id:int}", GetCampaign);
         root.MapPatch("/campaigns/{id:int}", PatchCampaign);
+        root.MapDelete("/campaigns/{id:int}", DeleteCampaign);
+        root.MapPost("/campaigns/{id:int}/join", JoinCampaign);
+        root.MapGet("/campaigns/{id:int}/participations", ListCampaignParticipations);
+        root.MapPost("/campaigns/{id:int}/redeem", RedeemCampaign);
+        root.MapGet("/campaigns/{id:int}/stamp-progress", GetCampaignStampProgress);
 
+        // Campaign Participations
+        group.MapGet("/campaign-participations", ListAllParticipations);
+        group.MapGet("/campaign-participations/{id:int}", GetParticipation);
+
+        root.MapGet("/campaign-participations", ListAllParticipations);
+        root.MapGet("/campaign-participations/{id:int}", GetParticipation);
+
+        // Discount Rules
         group.MapGet("/discount-rules", ListDiscountRules);
         group.MapPost("/discount-rules/", CreateDiscountRule);
+        group.MapGet("/discount-rules/{id:int}", GetDiscountRule);
+        group.MapPatch("/discount-rules/{id:int}", PatchDiscountRule);
+        group.MapDelete("/discount-rules/{id:int}", DeleteDiscountRule);
 
         root.MapGet("/discount-rules", ListDiscountRules);
         root.MapPost("/discount-rules/", CreateDiscountRule);
+        root.MapGet("/discount-rules/{id:int}", GetDiscountRule);
+        root.MapPatch("/discount-rules/{id:int}", PatchDiscountRule);
+        root.MapDelete("/discount-rules/{id:int}", DeleteDiscountRule);
 
+        // Coupons
         group.MapGet("/coupons", ListCoupons);
         group.MapPost("/coupons/", CreateCoupon);
+        group.MapGet("/coupons/{id:int}", GetCoupon);
         group.MapPatch("/coupons/{id:int}", PatchCoupon);
+        group.MapDelete("/coupons/{id:int}", DeleteCoupon);
 
         root.MapGet("/coupons", ListCoupons);
         root.MapPost("/coupons/", CreateCoupon);
+        root.MapGet("/coupons/{id:int}", GetCoupon);
         root.MapPatch("/coupons/{id:int}", PatchCoupon);
+        root.MapDelete("/coupons/{id:int}", DeleteCoupon);
 
+        // Gift Cards
         group.MapGet("/gift-cards", ListGiftCards);
         group.MapPost("/gift-cards/", CreateGiftCard);
+        group.MapGet("/gift-cards/{id:int}", GetGiftCard);
+        group.MapPatch("/gift-cards/{id:int}", PatchGiftCard);
+        group.MapDelete("/gift-cards/{id:int}", DeleteGiftCard);
         group.MapPost("/gift-cards/{id:int}/redeem/", RedeemGiftCard);
+        group.MapPost("/gift-cards/{id:int}/activate", ActivateGiftCard);
+        group.MapPost("/gift-cards/{id:int}/deactivate", DeactivateGiftCard);
 
         root.MapGet("/gift-cards", ListGiftCards);
         root.MapPost("/gift-cards/", CreateGiftCard);
+        root.MapGet("/gift-cards/{id:int}", GetGiftCard);
+        root.MapPatch("/gift-cards/{id:int}", PatchGiftCard);
+        root.MapDelete("/gift-cards/{id:int}", DeleteGiftCard);
         root.MapPost("/gift-cards/{id:int}/redeem/", RedeemGiftCard);
+        root.MapPost("/gift-cards/{id:int}/activate", ActivateGiftCard);
+        root.MapPost("/gift-cards/{id:int}/deactivate", DeactivateGiftCard);
 
+        // Campaign Displays
+        group.MapGet("/campaign-displays", ListCampaignDisplays);
         group.MapPost("/campaign-displays/", CreateCampaignDisplay);
+        group.MapGet("/campaign-displays/{id:int}", GetCampaignDisplay);
+        group.MapPatch("/campaign-displays/{id:int}", PatchCampaignDisplay);
+        group.MapDelete("/campaign-displays/{id:int}", DeleteCampaignDisplay);
+
+        root.MapGet("/campaign-displays", ListCampaignDisplays);
         root.MapPost("/campaign-displays/", CreateCampaignDisplay);
+        root.MapGet("/campaign-displays/{id:int}", GetCampaignDisplay);
+        root.MapPatch("/campaign-displays/{id:int}", PatchCampaignDisplay);
+        root.MapDelete("/campaign-displays/{id:int}", DeleteCampaignDisplay);
+
+        // Referral Programs
+        group.MapGet("/referral-programs", ListReferralPrograms);
+        group.MapPost("/referral-programs/", CreateReferralProgram);
+        group.MapGet("/referral-programs/{id:int}", GetReferralProgram);
+        group.MapPatch("/referral-programs/{id:int}", PatchReferralProgram);
+        group.MapDelete("/referral-programs/{id:int}", DeleteReferralProgram);
+
+        root.MapGet("/referral-programs", ListReferralPrograms);
+        root.MapPost("/referral-programs/", CreateReferralProgram);
+        root.MapGet("/referral-programs/{id:int}", GetReferralProgram);
+        root.MapPatch("/referral-programs/{id:int}", PatchReferralProgram);
+        root.MapDelete("/referral-programs/{id:int}", DeleteReferralProgram);
+
+        // Stamp Records
+        group.MapGet("/stamp-records", ListStampRecords);
+        group.MapGet("/stamp-records/{id:int}", GetStampRecord);
+
+        root.MapGet("/stamp-records", ListStampRecords);
+        root.MapGet("/stamp-records/{id:int}", GetStampRecord);
 
         var promo = app.MapGroup("/api/v1/promo").WithTags("Promo").RequireAuthorization();
         promo.MapGet("/vouchers", ListVouchers);
@@ -182,6 +254,148 @@ public static class MarketingEndpoints
         return Results.Ok(new { id = c.Id, name = c.Name, budget = c.Budget?.ToString("F2") });
     }
 
+    private static async Task<IResult> DeleteCampaign(BfgDbContext db, HttpContext ctx, int id, CancellationToken ct)
+    {
+        var wid = WorkspaceMiddleware.GetWorkspaceId(ctx);
+        var c = await db.Campaigns.FirstOrDefaultAsync(x => x.Id == id && (!wid.HasValue || x.WorkspaceId == wid.Value), ct);
+        if (c == null) return Results.NotFound();
+        c.IsActive = false;
+        c.UpdatedAt = DateTime.UtcNow;
+        await db.SaveChangesAsync(ct);
+        return Results.NoContent();
+    }
+
+    private static async Task<IResult> JoinCampaign(BfgDbContext db, HttpContext ctx, int id, CancellationToken ct)
+    {
+        var wid = WorkspaceMiddleware.GetWorkspaceId(ctx);
+        var campaign = await db.Campaigns.AsNoTracking()
+            .FirstOrDefaultAsync(x => x.Id == id && (!wid.HasValue || x.WorkspaceId == wid.Value), ct);
+        if (campaign == null) return Results.NotFound();
+
+        var userId = ctx.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (userId == null) return Results.Unauthorized();
+
+        var customer = await db.Customers.AsNoTracking()
+            .FirstOrDefaultAsync(c => c.UserId.ToString() == userId && (!wid.HasValue || c.WorkspaceId == wid.Value), ct);
+        if (customer == null) return Results.BadRequest(new { detail = "Customer not found for current user." });
+
+        var existing = await db.CampaignParticipations
+            .FirstOrDefaultAsync(p => p.CampaignId == id && p.CustomerId == customer.Id, ct);
+        if (existing != null)
+            return Results.Ok(new { id = existing.Id, campaign_id = existing.CampaignId, customer_id = existing.CustomerId, status = existing.Status, stamp_count = existing.StampCount, joined_at = existing.JoinedAt });
+
+        var now = DateTime.UtcNow;
+        var participation = new CampaignParticipation
+        {
+            CampaignId = id,
+            CustomerId = customer.Id,
+            Status = "active",
+            StampCount = 0,
+            JoinedAt = now,
+            CreatedAt = now,
+            UpdatedAt = now
+        };
+        db.CampaignParticipations.Add(participation);
+        await db.SaveChangesAsync(ct);
+        return Results.Created($"/api/v1/marketing/campaigns/{id}/participations", new { id = participation.Id, campaign_id = participation.CampaignId, customer_id = participation.CustomerId, status = participation.Status, stamp_count = participation.StampCount, joined_at = participation.JoinedAt });
+    }
+
+    private static async Task<IResult> ListCampaignParticipations(BfgDbContext db, HttpContext ctx, HttpRequest req, int id, CancellationToken ct)
+    {
+        var wid = WorkspaceMiddleware.GetWorkspaceId(ctx);
+        var campaign = await db.Campaigns.AsNoTracking()
+            .FirstOrDefaultAsync(x => x.Id == id && (!wid.HasValue || x.WorkspaceId == wid.Value), ct);
+        if (campaign == null) return Results.NotFound();
+
+        var query = db.CampaignParticipations.AsNoTracking().Where(p => p.CampaignId == id);
+        var total = await query.CountAsync(ct);
+        var (page, pageSize) = Pagination.FromRequest(req);
+        var list = await query.OrderByDescending(p => p.JoinedAt).Skip((page - 1) * pageSize).Take(pageSize)
+            .Select(p => new { id = p.Id, campaign_id = p.CampaignId, customer_id = p.CustomerId, status = p.Status, stamp_count = p.StampCount, joined_at = p.JoinedAt, reward_claimed_at = p.RewardClaimedAt })
+            .ToListAsync(ct);
+        return Results.Ok(Pagination.Wrap(list, page, pageSize, total));
+    }
+
+    private static async Task<IResult> RedeemCampaign(BfgDbContext db, HttpContext ctx, int id, CancellationToken ct)
+    {
+        var wid = WorkspaceMiddleware.GetWorkspaceId(ctx);
+        var campaign = await db.Campaigns.AsNoTracking()
+            .FirstOrDefaultAsync(x => x.Id == id && (!wid.HasValue || x.WorkspaceId == wid.Value), ct);
+        if (campaign == null) return Results.NotFound();
+
+        var userId = ctx.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (userId == null) return Results.Unauthorized();
+
+        var customer = await db.Customers.AsNoTracking()
+            .FirstOrDefaultAsync(c => c.UserId.ToString() == userId && (!wid.HasValue || c.WorkspaceId == wid.Value), ct);
+        if (customer == null) return Results.BadRequest(new { detail = "Customer not found for current user." });
+
+        var participation = await db.CampaignParticipations
+            .FirstOrDefaultAsync(p => p.CampaignId == id && p.CustomerId == customer.Id, ct);
+        if (participation == null) return Results.BadRequest(new { detail = "No participation found. Join the campaign first." });
+
+        var now = DateTime.UtcNow;
+        participation.Status = "redeemed";
+        participation.RewardClaimedAt = now;
+        participation.UpdatedAt = now;
+        await db.SaveChangesAsync(ct);
+        return Results.Ok(new { id = participation.Id, campaign_id = participation.CampaignId, customer_id = participation.CustomerId, status = participation.Status, reward_claimed_at = participation.RewardClaimedAt });
+    }
+
+    private static async Task<IResult> GetCampaignStampProgress(BfgDbContext db, HttpContext ctx, int id, CancellationToken ct)
+    {
+        var wid = WorkspaceMiddleware.GetWorkspaceId(ctx);
+        var campaign = await db.Campaigns.AsNoTracking()
+            .FirstOrDefaultAsync(x => x.Id == id && (!wid.HasValue || x.WorkspaceId == wid.Value), ct);
+        if (campaign == null) return Results.NotFound();
+
+        var userId = ctx.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (userId == null) return Results.Unauthorized();
+
+        var customer = await db.Customers.AsNoTracking()
+            .FirstOrDefaultAsync(c => c.UserId.ToString() == userId && (!wid.HasValue || c.WorkspaceId == wid.Value), ct);
+        if (customer == null) return Results.BadRequest(new { detail = "Customer not found for current user." });
+
+        var participation = await db.CampaignParticipations.AsNoTracking()
+            .FirstOrDefaultAsync(p => p.CampaignId == id && p.CustomerId == customer.Id, ct);
+
+        return Results.Ok(new
+        {
+            campaign_id = id,
+            customer_id = customer.Id,
+            stamp_count = participation?.StampCount ?? 0,
+            status = participation?.Status,
+            joined_at = participation?.JoinedAt
+        });
+    }
+
+    private static async Task<IResult> ListAllParticipations(BfgDbContext db, HttpContext ctx, HttpRequest req, CancellationToken ct)
+    {
+        var wid = WorkspaceMiddleware.GetWorkspaceId(ctx);
+        var query = db.CampaignParticipations.AsNoTracking()
+            .Where(p => !wid.HasValue || db.Campaigns.Any(c => c.Id == p.CampaignId && c.WorkspaceId == wid.Value));
+        var total = await query.CountAsync(ct);
+        var (page, pageSize) = Pagination.FromRequest(req);
+        var list = await query.OrderByDescending(p => p.JoinedAt).Skip((page - 1) * pageSize).Take(pageSize)
+            .Select(p => new { id = p.Id, campaign_id = p.CampaignId, customer_id = p.CustomerId, status = p.Status, stamp_count = p.StampCount, joined_at = p.JoinedAt, reward_claimed_at = p.RewardClaimedAt })
+            .ToListAsync(ct);
+        return Results.Ok(Pagination.Wrap(list, page, pageSize, total));
+    }
+
+    private static async Task<IResult> GetParticipation(BfgDbContext db, HttpContext ctx, int id, CancellationToken ct)
+    {
+        var wid = WorkspaceMiddleware.GetWorkspaceId(ctx);
+        var p = await db.CampaignParticipations.AsNoTracking()
+            .FirstOrDefaultAsync(x => x.Id == id, ct);
+        if (p == null) return Results.NotFound();
+        if (wid.HasValue)
+        {
+            var campaign = await db.Campaigns.AsNoTracking().FirstOrDefaultAsync(c => c.Id == p.CampaignId && c.WorkspaceId == wid.Value, ct);
+            if (campaign == null) return Results.NotFound();
+        }
+        return Results.Ok(new { id = p.Id, campaign_id = p.CampaignId, customer_id = p.CustomerId, status = p.Status, stamp_count = p.StampCount, joined_at = p.JoinedAt, reward_claimed_at = p.RewardClaimedAt });
+    }
+
     private static async Task<IResult> ListDiscountRules(BfgDbContext db, HttpContext ctx, CancellationToken ct)
     {
         var wid = WorkspaceMiddleware.GetWorkspaceId(ctx);
@@ -238,6 +452,43 @@ public static class MarketingEndpoints
         return Results.Created("/api/v1/marketing/discount-rules/", new { id = r.Id, name = r.Name, discount_type = r.DiscountType, discount_value = r.DiscountValue.ToString("F2") });
     }
 
+    private static async Task<IResult> GetDiscountRule(BfgDbContext db, HttpContext ctx, int id, CancellationToken ct)
+    {
+        var wid = WorkspaceMiddleware.GetWorkspaceId(ctx);
+        var r = await db.DiscountRules.AsNoTracking()
+            .FirstOrDefaultAsync(x => x.Id == id && (!wid.HasValue || x.WorkspaceId == wid.Value), ct);
+        if (r == null) return Results.NotFound();
+        return Results.Ok(new { id = r.Id, name = r.Name, discount_type = r.DiscountType, discount_value = r.DiscountValue.ToString("F2"), apply_to = r.ApplyTo, maximum_discount = r.MaximumDiscount?.ToString("F2"), minimum_purchase = r.MinimumPurchase?.ToString("F2"), display_label = r.DisplayLabel, is_active = r.IsActive, valid_from = r.ValidFrom, valid_until = r.ValidUntil });
+    }
+
+    private static async Task<IResult> PatchDiscountRule(BfgDbContext db, HttpContext ctx, int id, CancellationToken ct)
+    {
+        var wid = WorkspaceMiddleware.GetWorkspaceId(ctx);
+        var r = await db.DiscountRules.FirstOrDefaultAsync(x => x.Id == id && (!wid.HasValue || x.WorkspaceId == wid.Value), ct);
+        if (r == null) return Results.NotFound();
+        var body = await ctx.Request.ReadFromJsonAsync<DiscountRulePatchBody>(ct);
+        if (body != null)
+        {
+            if (body.name != null) r.Name = body.name;
+            if (body.discount_value != null && decimal.TryParse(body.discount_value, out var dv)) r.DiscountValue = dv;
+            if (body.is_active.HasValue) r.IsActive = body.is_active.Value;
+            if (body.valid_from.HasValue) r.ValidFrom = body.valid_from;
+            if (body.valid_until.HasValue) r.ValidUntil = body.valid_until;
+            await db.SaveChangesAsync(ct);
+        }
+        return Results.Ok(new { id = r.Id, name = r.Name, discount_type = r.DiscountType, discount_value = r.DiscountValue.ToString("F2"), is_active = r.IsActive });
+    }
+
+    private static async Task<IResult> DeleteDiscountRule(BfgDbContext db, HttpContext ctx, int id, CancellationToken ct)
+    {
+        var wid = WorkspaceMiddleware.GetWorkspaceId(ctx);
+        var r = await db.DiscountRules.FirstOrDefaultAsync(x => x.Id == id && (!wid.HasValue || x.WorkspaceId == wid.Value), ct);
+        if (r == null) return Results.NotFound();
+        r.IsActive = false;
+        await db.SaveChangesAsync(ct);
+        return Results.NoContent();
+    }
+
     private static async Task<IResult> ListCoupons(BfgDbContext db, HttpContext ctx, bool? is_active, CancellationToken ct)
     {
         var wid = WorkspaceMiddleware.GetWorkspaceId(ctx);
@@ -277,6 +528,15 @@ public static class MarketingEndpoints
         return Results.Created("/api/v1/marketing/coupons/", new { id = v.Id, code = v.Code, discount_rule = new { id = v.DiscountRuleId } });
     }
 
+    private static async Task<IResult> GetCoupon(BfgDbContext db, HttpContext ctx, int id, CancellationToken ct)
+    {
+        var wid = WorkspaceMiddleware.GetWorkspaceId(ctx);
+        var v = await db.Vouchers.AsNoTracking()
+            .FirstOrDefaultAsync(x => x.Id == id && (!wid.HasValue || x.WorkspaceId == wid.Value), ct);
+        if (v == null) return Results.NotFound();
+        return Results.Ok(new { id = v.Id, code = v.Code, discount_rule_id = v.DiscountRuleId, campaign_id = v.CampaignId, valid_from = v.ValidFrom, valid_until = v.ValidUntil, usage_limit = v.UsageLimit, usage_limit_per_customer = v.UsageLimitPerCustomer, times_used = v.TimesUsed, is_active = v.IsActive });
+    }
+
     private static async Task<IResult> PatchCoupon(BfgDbContext db, HttpContext ctx, int id, CancellationToken ct)
     {
         var wid = WorkspaceMiddleware.GetWorkspaceId(ctx);
@@ -285,6 +545,17 @@ public static class MarketingEndpoints
         var body = await ctx.Request.ReadFromJsonAsync<CouponPatchBody>(ct);
         if (body?.usage_limit != null) { v.UsageLimit = body.usage_limit; v.UpdatedAt = DateTime.UtcNow; await db.SaveChangesAsync(ct); }
         return Results.Ok(new { id = v.Id, usage_limit = v.UsageLimit });
+    }
+
+    private static async Task<IResult> DeleteCoupon(BfgDbContext db, HttpContext ctx, int id, CancellationToken ct)
+    {
+        var wid = WorkspaceMiddleware.GetWorkspaceId(ctx);
+        var v = await db.Vouchers.FirstOrDefaultAsync(x => x.Id == id && (!wid.HasValue || x.WorkspaceId == wid.Value), ct);
+        if (v == null) return Results.NotFound();
+        v.IsActive = false;
+        v.UpdatedAt = DateTime.UtcNow;
+        await db.SaveChangesAsync(ct);
+        return Results.NoContent();
     }
 
     private static async Task<IResult> ListGiftCards(BfgDbContext db, HttpContext ctx, CancellationToken ct)
@@ -325,6 +596,99 @@ public static class MarketingEndpoints
         return Results.Created("/api/v1/marketing/gift-cards/", new { id = g.Id, code = g.Code, initial_value = g.InitialValue.ToString("F2"), balance = g.Balance.ToString("F2") });
     }
 
+    private static async Task<IResult> GetGiftCard(BfgDbContext db, HttpContext ctx, int id, CancellationToken ct)
+    {
+        var wid = WorkspaceMiddleware.GetWorkspaceId(ctx);
+        var g = await db.GiftCards.AsNoTracking()
+            .FirstOrDefaultAsync(x => x.Id == id && (!wid.HasValue || x.WorkspaceId == wid.Value), ct);
+        if (g == null) return Results.NotFound();
+        return Results.Ok(new { id = g.Id, code = g.Code, initial_value = g.InitialValue.ToString("F2"), balance = g.Balance.ToString("F2"), customer_id = g.CustomerId, currency_id = g.CurrencyId, note = g.Note, is_active = g.IsActive, created_at = g.CreatedAt });
+    }
+
+    private static async Task<IResult> PatchGiftCard(BfgDbContext db, HttpContext ctx, int id, CancellationToken ct)
+    {
+        var wid = WorkspaceMiddleware.GetWorkspaceId(ctx);
+        var g = await db.GiftCards.FirstOrDefaultAsync(x => x.Id == id && (!wid.HasValue || x.WorkspaceId == wid.Value), ct);
+        if (g == null) return Results.NotFound();
+        var body = await ctx.Request.ReadFromJsonAsync<GiftCardPatchBody>(ct);
+        if (body != null)
+        {
+            if (body.note != null) g.Note = body.note;
+            if (body.is_active.HasValue) g.IsActive = body.is_active.Value;
+            g.UpdatedAt = DateTime.UtcNow;
+            await db.SaveChangesAsync(ct);
+        }
+        return Results.Ok(new { id = g.Id, code = g.Code, balance = g.Balance.ToString("F2"), note = g.Note, is_active = g.IsActive });
+    }
+
+    private static async Task<IResult> DeleteGiftCard(BfgDbContext db, HttpContext ctx, int id, CancellationToken ct)
+    {
+        var wid = WorkspaceMiddleware.GetWorkspaceId(ctx);
+        var g = await db.GiftCards.FirstOrDefaultAsync(x => x.Id == id && (!wid.HasValue || x.WorkspaceId == wid.Value), ct);
+        if (g == null) return Results.NotFound();
+        g.IsActive = false;
+        g.UpdatedAt = DateTime.UtcNow;
+        await db.SaveChangesAsync(ct);
+        return Results.NoContent();
+    }
+
+    private static async Task<IResult> ActivateGiftCard(BfgDbContext db, HttpContext ctx, int id, CancellationToken ct)
+    {
+        var wid = WorkspaceMiddleware.GetWorkspaceId(ctx);
+        var g = await db.GiftCards.FirstOrDefaultAsync(x => x.Id == id && (!wid.HasValue || x.WorkspaceId == wid.Value), ct);
+        if (g == null) return Results.NotFound();
+        g.IsActive = true;
+        g.UpdatedAt = DateTime.UtcNow;
+        await db.SaveChangesAsync(ct);
+        return Results.Ok(new { id = g.Id, code = g.Code, is_active = g.IsActive });
+    }
+
+    private static async Task<IResult> DeactivateGiftCard(BfgDbContext db, HttpContext ctx, int id, CancellationToken ct)
+    {
+        var wid = WorkspaceMiddleware.GetWorkspaceId(ctx);
+        var g = await db.GiftCards.FirstOrDefaultAsync(x => x.Id == id && (!wid.HasValue || x.WorkspaceId == wid.Value), ct);
+        if (g == null) return Results.NotFound();
+        g.IsActive = false;
+        g.UpdatedAt = DateTime.UtcNow;
+        await db.SaveChangesAsync(ct);
+        return Results.Ok(new { id = g.Id, code = g.Code, is_active = g.IsActive });
+    }
+
+    private static async Task<IResult> RedeemGiftCard(BfgDbContext db, HttpContext ctx, int id, CancellationToken ct)
+    {
+        var wid = WorkspaceMiddleware.GetWorkspaceId(ctx);
+        var g = await db.GiftCards.FirstOrDefaultAsync(x => x.Id == id && (!wid.HasValue || x.WorkspaceId == wid.Value), ct);
+        if (g == null) return Results.NotFound();
+        var body = await ctx.Request.ReadFromJsonAsync<RedeemBody>(ct);
+        var amount = body != null && decimal.TryParse(body.amount, out var a) ? a : 0;
+        if (amount <= 0 || amount > g.Balance) return Results.BadRequest();
+        g.Balance -= amount;
+        g.UpdatedAt = DateTime.UtcNow;
+        await db.SaveChangesAsync(ct);
+        return Results.Ok(new { success = true, redeemed_amount = amount.ToString("F2"), remaining_balance = g.Balance.ToString("F2"), gift_card = new { balance = g.Balance.ToString("F2") } });
+    }
+
+    private static async Task<IResult> ListCampaignDisplays(BfgDbContext db, HttpContext ctx, HttpRequest req, CancellationToken ct)
+    {
+        var wid = WorkspaceMiddleware.GetWorkspaceId(ctx);
+        var query = db.CampaignDisplays.AsNoTracking().Where(d => !wid.HasValue || d.WorkspaceId == wid.Value);
+        var total = await query.CountAsync(ct);
+        var (page, pageSize) = Pagination.FromRequest(req);
+        var list = await query.OrderBy(d => d.SortOrder).Skip((page - 1) * pageSize).Take(pageSize)
+            .Select(d => new { id = d.Id, campaign_id = d.CampaignId, display_type = d.DisplayType, title = d.Title, subtitle = d.Subtitle, link_url = d.LinkUrl, sort_order = d.SortOrder, is_active = d.IsActive })
+            .ToListAsync(ct);
+        return Results.Ok(Pagination.Wrap(list, page, pageSize, total));
+    }
+
+    private static async Task<IResult> GetCampaignDisplay(BfgDbContext db, HttpContext ctx, int id, CancellationToken ct)
+    {
+        var wid = WorkspaceMiddleware.GetWorkspaceId(ctx);
+        var d = await db.CampaignDisplays.AsNoTracking()
+            .FirstOrDefaultAsync(x => x.Id == id && (!wid.HasValue || x.WorkspaceId == wid.Value), ct);
+        if (d == null) return Results.NotFound();
+        return Results.Ok(new { id = d.Id, campaign_id = d.CampaignId, display_type = d.DisplayType, title = d.Title, subtitle = d.Subtitle, link_url = d.LinkUrl, link_target = d.LinkTarget, sort_order = d.SortOrder, is_active = d.IsActive });
+    }
+
     private static async Task<IResult> CreateCampaignDisplay(BfgDbContext db, HttpContext ctx, CancellationToken ct)
     {
         var wid = WorkspaceMiddleware.GetWorkspaceId(ctx);
@@ -358,21 +722,137 @@ public static class MarketingEndpoints
         return Results.Created("/api/v1/marketing/campaign-displays/", new { id = d.Id, campaign = d.CampaignId, display_type = d.DisplayType });
     }
 
-    private static async Task<IResult> RedeemGiftCard(BfgDbContext db, HttpContext ctx, int id, CancellationToken ct)
+    private static async Task<IResult> PatchCampaignDisplay(BfgDbContext db, HttpContext ctx, int id, CancellationToken ct)
     {
         var wid = WorkspaceMiddleware.GetWorkspaceId(ctx);
-        var g = await db.GiftCards.FirstOrDefaultAsync(x => x.Id == id && (!wid.HasValue || x.WorkspaceId == wid.Value), ct);
-        if (g == null) return Results.NotFound();
-        var body = await ctx.Request.ReadFromJsonAsync<RedeemBody>(ct);
-        var amount = body != null && decimal.TryParse(body.amount, out var a) ? a : 0;
-        if (amount <= 0 || amount > g.Balance) return Results.BadRequest();
-        g.Balance -= amount;
-        g.UpdatedAt = DateTime.UtcNow;
+        var d = await db.CampaignDisplays.FirstOrDefaultAsync(x => x.Id == id && (!wid.HasValue || x.WorkspaceId == wid.Value), ct);
+        if (d == null) return Results.NotFound();
+        var body = await ctx.Request.ReadFromJsonAsync<CampaignDisplayPatchBody>(ct);
+        if (body != null)
+        {
+            if (body.title != null) d.Title = body.title;
+            if (body.subtitle != null) d.Subtitle = body.subtitle;
+            if (body.link_url != null) d.LinkUrl = body.link_url;
+            if (body.display_type != null) d.DisplayType = Trunc(body.display_type, 30);
+            if (body.order.HasValue) d.SortOrder = body.order.Value;
+            if (body.is_active.HasValue) d.IsActive = body.is_active.Value;
+            d.UpdatedAt = DateTime.UtcNow;
+            await db.SaveChangesAsync(ct);
+        }
+        return Results.Ok(new { id = d.Id, campaign_id = d.CampaignId, display_type = d.DisplayType, title = d.Title, is_active = d.IsActive });
+    }
+
+    private static async Task<IResult> DeleteCampaignDisplay(BfgDbContext db, HttpContext ctx, int id, CancellationToken ct)
+    {
+        var wid = WorkspaceMiddleware.GetWorkspaceId(ctx);
+        var d = await db.CampaignDisplays.FirstOrDefaultAsync(x => x.Id == id && (!wid.HasValue || x.WorkspaceId == wid.Value), ct);
+        if (d == null) return Results.NotFound();
+        d.IsActive = false;
+        d.UpdatedAt = DateTime.UtcNow;
         await db.SaveChangesAsync(ct);
-        return Results.Ok(new { success = true, redeemed_amount = amount.ToString("F2"), remaining_balance = g.Balance.ToString("F2"), gift_card = new { balance = g.Balance.ToString("F2") } });
+        return Results.NoContent();
+    }
+
+    private static async Task<IResult> ListReferralPrograms(BfgDbContext db, HttpContext ctx, HttpRequest req, CancellationToken ct)
+    {
+        var wid = WorkspaceMiddleware.GetWorkspaceId(ctx);
+        var query = db.ReferralPrograms.AsNoTracking().Where(r => !wid.HasValue || r.WorkspaceId == wid.Value);
+        var total = await query.CountAsync(ct);
+        var (page, pageSize) = Pagination.FromRequest(req);
+        var list = await query.OrderByDescending(r => r.CreatedAt).Skip((page - 1) * pageSize).Take(pageSize)
+            .Select(r => new { id = r.Id, name = r.Name, is_active = r.IsActive, created_at = r.CreatedAt })
+            .ToListAsync(ct);
+        return Results.Ok(Pagination.Wrap(list, page, pageSize, total));
+    }
+
+    private static async Task<IResult> CreateReferralProgram(BfgDbContext db, HttpContext ctx, CancellationToken ct)
+    {
+        var wid = WorkspaceMiddleware.GetWorkspaceId(ctx);
+        if (!wid.HasValue) return Results.BadRequest();
+        var body = await ctx.Request.ReadFromJsonAsync<ReferralProgramCreateBody>(ct);
+        if (body == null) return Results.BadRequest();
+        var now = DateTime.UtcNow;
+        var r = new ReferralProgram
+        {
+            WorkspaceId = wid.Value,
+            Name = body.name ?? "",
+            Description = body.description ?? "",
+            IsActive = body.is_active ?? true,
+            CreatedAt = now,
+            UpdatedAt = now
+        };
+        db.ReferralPrograms.Add(r);
+        await db.SaveChangesAsync(ct);
+        return Results.Created("/api/v1/marketing/referral-programs/", new { id = r.Id, name = r.Name, is_active = r.IsActive });
+    }
+
+    private static async Task<IResult> GetReferralProgram(BfgDbContext db, HttpContext ctx, int id, CancellationToken ct)
+    {
+        var wid = WorkspaceMiddleware.GetWorkspaceId(ctx);
+        var r = await db.ReferralPrograms.AsNoTracking()
+            .FirstOrDefaultAsync(x => x.Id == id && (!wid.HasValue || x.WorkspaceId == wid.Value), ct);
+        if (r == null) return Results.NotFound();
+        return Results.Ok(new { id = r.Id, name = r.Name, description = r.Description, is_active = r.IsActive, created_at = r.CreatedAt });
+    }
+
+    private static async Task<IResult> PatchReferralProgram(BfgDbContext db, HttpContext ctx, int id, CancellationToken ct)
+    {
+        var wid = WorkspaceMiddleware.GetWorkspaceId(ctx);
+        var r = await db.ReferralPrograms.FirstOrDefaultAsync(x => x.Id == id && (!wid.HasValue || x.WorkspaceId == wid.Value), ct);
+        if (r == null) return Results.NotFound();
+        var body = await ctx.Request.ReadFromJsonAsync<ReferralProgramPatchBody>(ct);
+        if (body != null)
+        {
+            if (body.name != null) r.Name = body.name;
+            if (body.description != null) r.Description = body.description;
+            if (body.is_active.HasValue) r.IsActive = body.is_active.Value;
+            r.UpdatedAt = DateTime.UtcNow;
+            await db.SaveChangesAsync(ct);
+        }
+        return Results.Ok(new { id = r.Id, name = r.Name, description = r.Description, is_active = r.IsActive });
+    }
+
+    private static async Task<IResult> DeleteReferralProgram(BfgDbContext db, HttpContext ctx, int id, CancellationToken ct)
+    {
+        var wid = WorkspaceMiddleware.GetWorkspaceId(ctx);
+        var r = await db.ReferralPrograms.FirstOrDefaultAsync(x => x.Id == id && (!wid.HasValue || x.WorkspaceId == wid.Value), ct);
+        if (r == null) return Results.NotFound();
+        r.IsActive = false;
+        r.UpdatedAt = DateTime.UtcNow;
+        await db.SaveChangesAsync(ct);
+        return Results.NoContent();
+    }
+
+    private static async Task<IResult> ListStampRecords(BfgDbContext db, HttpContext ctx, HttpRequest req, int? campaign_id, CancellationToken ct)
+    {
+        var wid = WorkspaceMiddleware.GetWorkspaceId(ctx);
+        var query = db.StampRecords.AsNoTracking()
+            .Where(s => !wid.HasValue || db.Campaigns.Any(c => c.Id == s.CampaignId && c.WorkspaceId == wid.Value));
+        if (campaign_id.HasValue)
+            query = query.Where(s => s.CampaignId == campaign_id.Value);
+        var total = await query.CountAsync(ct);
+        var (page, pageSize) = Pagination.FromRequest(req);
+        var list = await query.OrderByDescending(s => s.CreatedAt).Skip((page - 1) * pageSize).Take(pageSize)
+            .Select(s => new { id = s.Id, campaign_id = s.CampaignId, customer_id = s.CustomerId, stamp_count = s.StampCount, created_at = s.CreatedAt })
+            .ToListAsync(ct);
+        return Results.Ok(Pagination.Wrap(list, page, pageSize, total));
+    }
+
+    private static async Task<IResult> GetStampRecord(BfgDbContext db, HttpContext ctx, int id, CancellationToken ct)
+    {
+        var wid = WorkspaceMiddleware.GetWorkspaceId(ctx);
+        var s = await db.StampRecords.AsNoTracking().FirstOrDefaultAsync(x => x.Id == id, ct);
+        if (s == null) return Results.NotFound();
+        if (wid.HasValue)
+        {
+            var campaign = await db.Campaigns.AsNoTracking().FirstOrDefaultAsync(c => c.Id == s.CampaignId && c.WorkspaceId == wid.Value, ct);
+            if (campaign == null) return Results.NotFound();
+        }
+        return Results.Ok(new { id = s.Id, campaign_id = s.CampaignId, customer_id = s.CustomerId, stamp_count = s.StampCount, created_at = s.CreatedAt });
     }
 
     private sealed record CampaignDisplayCreateBody(int? campaign, string? display_type, int? order, string? link_url, bool? is_active, string? title, string? subtitle);
+    private sealed record CampaignDisplayPatchBody(string? title, string? subtitle, string? display_type, string? link_url, int? order, bool? is_active);
 
     private sealed record CampaignCreateBody(
         string? name,
@@ -408,6 +888,8 @@ public static class MarketingEndpoints
         public List<int>? category_ids { get; set; }
     }
 
+    private sealed record DiscountRulePatchBody(string? name, string? discount_value, bool? is_active, DateTime? valid_from, DateTime? valid_until);
+
     private sealed record CouponCreateBody(int discount_rule_id, int? campaign_id, string? code, string? description, DateTime? valid_from, DateTime? valid_until, int? usage_limit, int? usage_limit_per_customer, bool? is_active);
 
     private static DateTime NormalizeToUtc(DateTime dt) => dt.Kind switch
@@ -429,6 +911,9 @@ public static class MarketingEndpoints
     }
     private sealed record CouponPatchBody(int? usage_limit);
     private sealed record GiftCardCreateBody(string? initial_value, string? balance, int currency, int? customer, bool? is_active);
+    private sealed record GiftCardPatchBody(string? note, bool? is_active);
     private sealed record RedeemBody(string? amount);
     private sealed record VoucherCreateBody(string? code, int discount_rule_id, bool? is_active, int? usage_limit);
+    private sealed record ReferralProgramCreateBody(string? name, string? description, bool? is_active);
+    private sealed record ReferralProgramPatchBody(string? name, string? description, bool? is_active);
 }
