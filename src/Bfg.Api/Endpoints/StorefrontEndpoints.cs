@@ -26,19 +26,26 @@ public static class StorefrontEndpoints
         group.MapGet("/categories", ListStoreCategories).AllowAnonymous();
         group.MapGet("/categories/{id:int}", GetStoreCategory).AllowAnonymous();
         group.MapGet("/cart/current/", GetCartCurrent).AllowAnonymous();
+        group.MapGet("/cart/preview", StoreCartPreview).AllowAnonymous();
+        group.MapGet("/cart/default_store", GetDefaultStore).AllowAnonymous();
         group.MapPost("/cart/add_item/", StoreCartAddItem).AllowAnonymous();
         group.MapPost("/cart/update_item/", StoreCartUpdateItem).AllowAnonymous();
         group.MapPost("/cart/remove_item/", StoreCartRemoveItem).AllowAnonymous();
         group.MapPost("/cart/clear/", StoreCartClear).AllowAnonymous();
         group.MapPost("/cart/checkout/", StoreCartCheckout);
+        group.MapPost("/cart/guest_checkout", GuestCartCheckout).AllowAnonymous();
         group.MapGet("/orders/", ListStoreOrders);
         group.MapGet("/orders/{id:int}/", GetStoreOrder);
         group.MapPost("/orders/{id:int}/cancel/", CancelStoreOrder);
         group.MapPost("/payments/intent/", StorePaymentIntent);
         group.MapPost("/payments/{id:long}/process/", StorePaymentProcess);
         group.MapPost("/payments/callback/{gateway}", PaymentCallback).AllowAnonymous();
+        group.MapGet("/payments/gateways", ListStorefrontPaymentGateways).AllowAnonymous();
         group.MapGet("/promo/", Promo).AllowAnonymous();
         group.MapGet("/inventory", StoreInventory).AllowAnonymous();
+        group.MapGet("/wishlist", GetWishlist);
+        group.MapPost("/wishlist/add", AddToWishlist);
+        group.MapPost("/wishlist/remove", RemoveFromWishlist);
     }
 
     private static async Task<IResult> ListStoreProducts(BfgDbContext db, HttpContext ctx, HttpRequest req, CancellationToken ct)
@@ -331,6 +338,37 @@ public static class StorefrontEndpoints
         return Results.Ok(CartJson.StorefrontDetail(d));
     }
 
+    /// <summary>GET /store/cart/preview — return cart with computed totals, no auth required.</summary>
+    private static async Task<IResult> StoreCartPreview(CartService carts, HttpContext ctx, CancellationToken ct)
+    {
+        var wid = WorkspaceMiddleware.GetWorkspaceId(ctx);
+        if (!wid.HasValue)
+        {
+            var empty = new CartDetail(0, 0, null, CartService.StatusOpen, Array.Empty<CartLineDto>(), "0.00");
+            return Results.Ok(CartJson.StorefrontDetail(empty));
+        }
+
+        var sessionKey = StorefrontCartSession.Resolve(ctx);
+        var d = await carts.GetCurrentOrEmptyForStorefrontAsync(wid.Value, sessionKey, ct);
+        return Results.Ok(CartJson.StorefrontDetail(d));
+    }
+
+    /// <summary>GET /store/cart/default_store — return default active store for workspace.</summary>
+    private static async Task<IResult> GetDefaultStore(BfgDbContext db, HttpContext ctx, CancellationToken ct)
+    {
+        var wid = WorkspaceMiddleware.GetWorkspaceId(ctx);
+        if (!wid.HasValue) return Results.NotFound(new { detail = "No workspace." });
+
+        var store = await db.Stores.AsNoTracking()
+            .Where(s => s.WorkspaceId == wid.Value && s.IsActive)
+            .OrderBy(s => s.Id)
+            .Select(s => new { id = s.Id, name = s.Name, workspace = s.WorkspaceId })
+            .FirstOrDefaultAsync(ct);
+
+        if (store == null) return Results.NotFound(new { detail = "No active store found." });
+        return Results.Ok(store);
+    }
+
     private static async Task<IResult> StoreCartAddItem(CartService carts, HttpContext ctx, CancellationToken ct)
     {
         var wid = WorkspaceMiddleware.GetWorkspaceId(ctx);
@@ -409,6 +447,154 @@ public static class StorefrontEndpoints
         }
 
         return Results.Created("/api/v1/store/orders/", OrderCheckoutJson.CreatedBody(r.Payload!));
+    }
+
+    /// <summary>POST /store/cart/guest_checkout — checkout without auth.</summary>
+    private static async Task<IResult> GuestCartCheckout(BfgDbContext db, HttpContext ctx, CancellationToken ct)
+    {
+        var wid = WorkspaceMiddleware.GetWorkspaceId(ctx);
+        if (!wid.HasValue) return Results.BadRequest(new { detail = "Workspace required." });
+
+        var body = await ctx.Request.ReadFromJsonAsync<GuestCheckoutBody>(ct);
+        if (body == null) return Results.BadRequest(new { detail = "Request body required." });
+        if (string.IsNullOrWhiteSpace(body.Name))
+            return Results.BadRequest(new { detail = "name is required." });
+        if (string.IsNullOrWhiteSpace(body.Email))
+            return Results.BadRequest(new { detail = "email is required." });
+        if (string.IsNullOrWhiteSpace(body.Phone))
+            return Results.BadRequest(new { detail = "phone is required." });
+        if (body.ShippingAddress == null)
+            return Results.BadRequest(new { detail = "shipping_address is required." });
+
+        // Resolve session cart
+        var sessionKey = StorefrontCartSession.Resolve(ctx);
+        var cart = await db.Carts.AsNoTracking()
+            .Where(c => c.WorkspaceId == wid.Value && c.SessionKey == sessionKey)
+            .OrderByDescending(c => c.UpdatedAt)
+            .FirstOrDefaultAsync(ct);
+
+        List<CartItem> cartItems = new();
+        if (cart != null)
+            cartItems = await db.CartItems.AsNoTracking().Where(i => i.CartId == cart.Id).ToListAsync(ct);
+
+        if (cartItems.Count == 0)
+            return Results.BadRequest(new { detail = "Cart is empty." });
+
+        // Resolve default store
+        var store = await db.Stores.AsNoTracking()
+            .Where(s => s.WorkspaceId == wid.Value && s.IsActive)
+            .OrderBy(s => s.Id)
+            .FirstOrDefaultAsync(ct);
+        if (store == null)
+            return Results.BadRequest(new { detail = "No active store found." });
+        var storeId = body.StoreId ?? store.Id;
+
+        // Build order totals
+        decimal subtotal = 0m;
+        var orderItems = new List<OrderItem>();
+        var now = DateTime.UtcNow;
+
+        foreach (var item in cartItems)
+        {
+            var product = await db.Products.AsNoTracking().FirstOrDefaultAsync(p => p.Id == item.ProductId && p.WorkspaceId == wid.Value, ct);
+            if (product == null) continue;
+            decimal unitPrice = product.Price;
+            if (item.VariantId.HasValue)
+            {
+                var variant = await db.Variants.AsNoTracking().FirstOrDefaultAsync(v => v.Id == item.VariantId.Value, ct);
+                if (variant?.Price.HasValue == true) unitPrice = variant.Price.Value;
+            }
+            var lineTotal = unitPrice * item.Quantity;
+            subtotal += lineTotal;
+            orderItems.Add(new OrderItem
+            {
+                ProductId = item.ProductId,
+                VariantId = item.VariantId,
+                ProductName = product.Name,
+                Quantity = item.Quantity,
+                UnitPrice = unitPrice,
+                TotalPrice = lineTotal,
+                CreatedAt = now
+            });
+        }
+
+        var totalAmount = subtotal; // shipping/tax/discount can be extended later
+
+        // Generate order number
+        var orderNumber = "ORD-G-" + DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+
+        // Encode guest info into CustomerNote as JSON metadata (Order has no dedicated guest fields)
+        var guestMeta = JsonSerializer.Serialize(new
+        {
+            guest = true,
+            name = body.Name,
+            email = body.Email,
+            phone = body.Phone,
+            note = body.Note ?? "",
+            shipping_address = body.ShippingAddress
+        });
+
+        var order = new Order
+        {
+            WorkspaceId = wid.Value,
+            CustomerId = 0, // guest: no customer
+            StoreId = storeId,
+            OrderNumber = orderNumber,
+            Status = "pending",
+            PaymentStatus = "unpaid",
+            Subtotal = subtotal,
+            ShippingCost = 0m,
+            Tax = 0m,
+            Discount = 0m,
+            TotalAmount = totalAmount,
+            ShippingAddressId = null,
+            BillingAddressId = null,
+            CustomerNote = guestMeta,
+            AdminNote = "",
+            CreatedAt = now,
+            UpdatedAt = now
+        };
+
+        db.Orders.Add(order);
+        await db.SaveChangesAsync(ct);
+
+        foreach (var oi in orderItems)
+        {
+            oi.OrderId = order.Id;
+            db.OrderItems.Add(oi);
+        }
+
+        // Clear cart items after guest checkout (Cart has no status field — remove items)
+        if (cart != null)
+        {
+            var cartItemsToRemove = await db.CartItems.Where(i => i.CartId == cart.Id).ToListAsync(ct);
+            db.CartItems.RemoveRange(cartItemsToRemove);
+            var trackedCart = await db.Carts.FirstOrDefaultAsync(c => c.Id == cart.Id, ct);
+            if (trackedCart != null) trackedCart.UpdatedAt = now;
+        }
+
+        await db.SaveChangesAsync(ct);
+
+        return Results.Created("/api/v1/store/orders/", new
+        {
+            id = order.Id,
+            order_number = order.OrderNumber,
+            status = order.Status,
+            payment_status = order.PaymentStatus,
+            total_amount = order.TotalAmount.ToString("F2"),
+            guest_name = body.Name,
+            guest_email = body.Email,
+            guest_phone = body.Phone,
+            items = orderItems.Select(i => new
+            {
+                product = i.ProductId,
+                variant = i.VariantId,
+                product_name = i.ProductName,
+                quantity = i.Quantity,
+                unit_price = i.UnitPrice.ToString("F2"),
+                total_price = i.TotalPrice.ToString("F2")
+            }).ToList()
+        });
     }
 
     private static async Task<IResult> ListStoreOrders(BfgDbContext db, HttpContext ctx, HttpRequest req, CancellationToken ct)
@@ -559,6 +745,26 @@ public static class StorefrontEndpoints
         return Results.Ok(new { status = "received" });
     }
 
+    /// <summary>GET /store/payments/gateways — list active payment gateways (public info only).</summary>
+    private static async Task<IResult> ListStorefrontPaymentGateways(BfgDbContext db, HttpContext ctx, CancellationToken ct)
+    {
+        var wid = WorkspaceMiddleware.GetWorkspaceId(ctx);
+        if (!wid.HasValue) return Results.Ok(Array.Empty<object>());
+
+        var gateways = await db.PaymentGateways.AsNoTracking()
+            .Where(g => g.WorkspaceId == wid.Value && g.IsActive)
+            .OrderBy(g => g.Id)
+            .Select(g => (object)new
+            {
+                id = g.Id,
+                name = g.Name,
+                gateway_type = g.GatewayType
+            })
+            .ToListAsync(ct);
+
+        return Results.Ok(gateways);
+    }
+
     private static async Task<IResult> Promo(BfgDbContext db, HttpContext ctx, HttpRequest req, CancellationToken ct)
     {
         var context = req.Query["context"].ToString() ?? "home";
@@ -615,10 +821,180 @@ public static class StorefrontEndpoints
         return Results.Ok(result);
     }
 
+    // ─── Wishlist ────────────────────────────────────────────────────────────────
+
+    /// <summary>GET /store/wishlist — get or create wishlist for current authenticated user.</summary>
+    private static async Task<IResult> GetWishlist(BfgDbContext db, HttpContext ctx, CancellationToken ct)
+    {
+        var wid = WorkspaceMiddleware.GetWorkspaceId(ctx);
+        if (!wid.HasValue) return Results.BadRequest(new { detail = "Workspace required." });
+
+        var uid = WorkspaceMiddleware.GetCurrentUserId(ctx);
+        if (uid is null or <= 0) return Results.Unauthorized();
+
+        var customerId = await db.Customers.AsNoTracking()
+            .Where(c => c.WorkspaceId == wid.Value && c.UserId == uid.Value)
+            .Select(c => c.Id).FirstOrDefaultAsync(ct);
+        if (customerId == 0) return Results.BadRequest(new { detail = "Customer required." });
+
+        var wishlist = await db.Wishlists
+            .FirstOrDefaultAsync(w => w.WorkspaceId == wid.Value && w.CustomerId == customerId, ct);
+
+        if (wishlist == null)
+        {
+            var now = DateTime.UtcNow;
+            wishlist = new Wishlist
+            {
+                WorkspaceId = wid.Value,
+                CustomerId = customerId,
+                SessionKey = "",
+                CreatedAt = now,
+                UpdatedAt = now
+            };
+            db.Wishlists.Add(wishlist);
+            await db.SaveChangesAsync(ct);
+        }
+
+        var items = await db.WishlistItems.AsNoTracking()
+            .Where(i => i.WishlistId == wishlist.Id)
+            .Join(db.Products.AsNoTracking(), i => i.ProductId, p => p.Id, (i, p) => new { i, p })
+            .Select(x => (object)new
+            {
+                id = x.i.Id,
+                product_id = x.i.ProductId,
+                variant_id = x.i.VariantId,
+                product_name = x.p.Name,
+                product_slug = x.p.Slug,
+                price = x.p.Price.ToString("F2"),
+                added_at = x.i.CreatedAt
+            })
+            .ToListAsync(ct);
+
+        return Results.Ok(new
+        {
+            id = wishlist.Id,
+            workspace = wishlist.WorkspaceId,
+            customer_id = wishlist.CustomerId,
+            items
+        });
+    }
+
+    /// <summary>POST /store/wishlist/add — add product/variant to wishlist.</summary>
+    private static async Task<IResult> AddToWishlist(BfgDbContext db, HttpContext ctx, CancellationToken ct)
+    {
+        var wid = WorkspaceMiddleware.GetWorkspaceId(ctx);
+        if (!wid.HasValue) return Results.BadRequest(new { detail = "Workspace required." });
+
+        var uid = WorkspaceMiddleware.GetCurrentUserId(ctx);
+        if (uid is null or <= 0) return Results.Unauthorized();
+
+        var customerId = await db.Customers.AsNoTracking()
+            .Where(c => c.WorkspaceId == wid.Value && c.UserId == uid.Value)
+            .Select(c => c.Id).FirstOrDefaultAsync(ct);
+        if (customerId == 0) return Results.BadRequest(new { detail = "Customer required." });
+
+        var body = await ctx.Request.ReadFromJsonAsync<WishlistAddBody>(ct);
+        if (body is not { ProductId: > 0 }) return Results.BadRequest(new { detail = "product_id is required." });
+
+        var productExists = await db.Products.AsNoTracking()
+            .AnyAsync(p => p.Id == body.ProductId && p.WorkspaceId == wid.Value && p.IsActive, ct);
+        if (!productExists) return Results.NotFound(new { detail = "Product not found." });
+
+        var now = DateTime.UtcNow;
+        var wishlist = await db.Wishlists
+            .FirstOrDefaultAsync(w => w.WorkspaceId == wid.Value && w.CustomerId == customerId, ct);
+
+        if (wishlist == null)
+        {
+            wishlist = new Wishlist
+            {
+                WorkspaceId = wid.Value,
+                CustomerId = customerId,
+                SessionKey = "",
+                CreatedAt = now,
+                UpdatedAt = now
+            };
+            db.Wishlists.Add(wishlist);
+            await db.SaveChangesAsync(ct);
+        }
+
+        // Check if already in wishlist
+        var alreadyExists = await db.WishlistItems.AnyAsync(
+            i => i.WishlistId == wishlist.Id && i.ProductId == body.ProductId && i.VariantId == body.VariantId, ct);
+
+        if (alreadyExists)
+            return Results.Ok(new { detail = "Already in wishlist." });
+
+        var item = new WishlistItem
+        {
+            WishlistId = wishlist.Id,
+            ProductId = body.ProductId,
+            VariantId = body.VariantId,
+            CreatedAt = now
+        };
+        db.WishlistItems.Add(item);
+        wishlist.UpdatedAt = now;
+        await db.SaveChangesAsync(ct);
+
+        return Results.Created("/api/v1/store/wishlist", new
+        {
+            id = item.Id,
+            wishlist_id = wishlist.Id,
+            product_id = item.ProductId,
+            variant_id = item.VariantId,
+            added_at = item.CreatedAt
+        });
+    }
+
+    /// <summary>POST /store/wishlist/remove — remove item from wishlist by product_id or item_id.</summary>
+    private static async Task<IResult> RemoveFromWishlist(BfgDbContext db, HttpContext ctx, CancellationToken ct)
+    {
+        var wid = WorkspaceMiddleware.GetWorkspaceId(ctx);
+        if (!wid.HasValue) return Results.BadRequest(new { detail = "Workspace required." });
+
+        var uid = WorkspaceMiddleware.GetCurrentUserId(ctx);
+        if (uid is null or <= 0) return Results.Unauthorized();
+
+        var customerId = await db.Customers.AsNoTracking()
+            .Where(c => c.WorkspaceId == wid.Value && c.UserId == uid.Value)
+            .Select(c => c.Id).FirstOrDefaultAsync(ct);
+        if (customerId == 0) return Results.BadRequest(new { detail = "Customer required." });
+
+        var body = await ctx.Request.ReadFromJsonAsync<WishlistRemoveBody>(ct);
+        if (body == null || (!body.ProductId.HasValue && !body.ItemId.HasValue))
+            return Results.BadRequest(new { detail = "product_id or item_id is required." });
+
+        var wishlist = await db.Wishlists.AsNoTracking()
+            .FirstOrDefaultAsync(w => w.WorkspaceId == wid.Value && w.CustomerId == customerId, ct);
+        if (wishlist == null) return Results.NotFound(new { detail = "Wishlist not found." });
+
+        WishlistItem? item = null;
+        if (body.ItemId.HasValue)
+            item = await db.WishlistItems.FirstOrDefaultAsync(i => i.Id == body.ItemId.Value && i.WishlistId == wishlist.Id, ct);
+        else if (body.ProductId.HasValue)
+            item = await db.WishlistItems.FirstOrDefaultAsync(i => i.ProductId == body.ProductId.Value && i.WishlistId == wishlist.Id, ct);
+
+        if (item == null) return Results.NotFound(new { detail = "Item not found in wishlist." });
+
+        db.WishlistItems.Remove(item);
+
+        var trackedWishlist = await db.Wishlists.FirstOrDefaultAsync(w => w.Id == wishlist.Id, ct);
+        if (trackedWishlist != null) trackedWishlist.UpdatedAt = DateTime.UtcNow;
+
+        await db.SaveChangesAsync(ct);
+        return Results.Ok(new { detail = "Removed from wishlist." });
+    }
+
+    // ─── Request/response records ────────────────────────────────────────────────
+
     private sealed record StoreCartItemBody(int Product, int? Variant, int? Quantity);
     private sealed record StoreCartUpdateBody(int ItemId, int? Quantity);
     private sealed record StoreCartRemoveBody(int ItemId);
     private sealed record StoreCheckoutBody(int Store, int ShippingAddress, int? BillingAddress, string? CustomerNote, string? CouponCode = null, string? GiftCardCode = null);
     private sealed record StoreReviewCreateBody(int rating, string? title, string? comment);
     private sealed record StorePaymentIntentBody(int order_id, int gateway_id);
+    private sealed record GuestCheckoutBody(string? Name, string? Email, string? Phone, GuestShippingAddress? ShippingAddress, int? StoreId = null, string? Note = null);
+    private sealed record GuestShippingAddress(string? Line1, string? Line2, string? City, string? State, string? PostalCode, string? Country);
+    private sealed record WishlistAddBody(int ProductId, int? VariantId = null);
+    private sealed record WishlistRemoveBody(int? ProductId, int? ItemId = null);
 }

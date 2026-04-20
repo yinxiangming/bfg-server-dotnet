@@ -3,6 +3,7 @@ using Bfg.Api.Infrastructure;
 using Bfg.Api.Middleware;
 using Bfg.Core;
 using Bfg.Core.Common;
+using Bfg.Core.Support;
 using Microsoft.EntityFrameworkCore;
 
 namespace Bfg.Api.Endpoints;
@@ -18,8 +19,13 @@ public static class MeEndpoints
 
         group.MapGet("/", Me);
         group.MapPatch("/", PatchMe);
+        group.MapPut("/", PutMe);
         group.MapPost("/change-password/", ChangePassword);
         group.MapPost("/reset-password/", ResetPassword);
+
+        group.MapPost("/avatar", UploadAvatar);
+
+        group.MapGet("/dashboard-stats", GetMeDashboardStats);
 
         group.MapGet("/addresses/", ListMeAddresses);
         group.MapPost("/addresses/", CreateMeAddress);
@@ -44,9 +50,16 @@ public static class MeEndpoints
 
         group.MapGet("/payments/", ListMePayments);
         group.MapGet("/payments/{id:int}", GetMePayment);
+        group.MapPost("/payments/{id:int}/send", SendMePayment);
 
         group.MapGet("/invoices/", ListMeInvoices);
         group.MapGet("/invoices/{id:int}", GetMeInvoice);
+        group.MapGet("/invoices/{id:int}/download_pdf", DownloadMeInvoicePdf);
+        group.MapPost("/invoices/{id:int}/send", SendMeInvoice);
+
+        group.MapGet("/support-options", GetMeSupportOptions);
+        group.MapGet("/tickets", ListMeTickets);
+        group.MapPost("/tickets/", CreateMeTicket);
     }
 
     private static int? GetCurrentUserId(HttpContext ctx)
@@ -83,6 +96,75 @@ public static class MeEndpoints
         var body = await ctx.Request.ReadFromJsonAsync<MePatchBody>(ct);
         if (body != null) { if (body.first_name != null) user.FirstName = body.first_name; if (body.last_name != null) user.LastName = body.last_name; if (body.phone != null) user.Phone = body.phone; user.UpdatedAt = DateTime.UtcNow; await db.SaveChangesAsync(ct); }
         return Results.Ok(new { id = user.Id, first_name = user.FirstName, last_name = user.LastName, phone = user.Phone });
+    }
+
+    private static async Task<IResult> PutMe(HttpContext ctx, BfgDbContext db, CancellationToken ct)
+    {
+        var userId = GetCurrentUserId(ctx);
+        if (!userId.HasValue) return Results.Unauthorized();
+        var user = await db.Users.FirstOrDefaultAsync(u => u.Id == userId, ct);
+        if (user == null) return Results.NotFound();
+        var body = await ctx.Request.ReadFromJsonAsync<MePatchBody>(ct);
+        if (body == null) return Results.BadRequest();
+        user.FirstName = body.first_name ?? "";
+        user.LastName = body.last_name ?? "";
+        user.Phone = body.phone ?? "";
+        user.UpdatedAt = DateTime.UtcNow;
+        await db.SaveChangesAsync(ct);
+        return Results.Ok(new { id = user.Id, first_name = user.FirstName, last_name = user.LastName, phone = user.Phone });
+    }
+
+    private static async Task<IResult> UploadAvatar(HttpContext ctx, BfgDbContext db, CancellationToken ct)
+    {
+        var userId = GetCurrentUserId(ctx);
+        if (!userId.HasValue) return Results.Unauthorized();
+        var user = await db.Users.FirstOrDefaultAsync(u => u.Id == userId, ct);
+        if (user == null) return Results.NotFound();
+        var body = await ctx.Request.ReadFromJsonAsync<AvatarBody>(ct);
+        if (body?.avatar_url == null) return Results.BadRequest(new { avatar_url = new[] { "This field is required." } });
+        user.Avatar = body.avatar_url;
+        user.UpdatedAt = DateTime.UtcNow;
+        await db.SaveChangesAsync(ct);
+        return Results.Ok(new { id = user.Id, avatar = user.Avatar });
+    }
+
+    private static async Task<IResult> GetMeDashboardStats(HttpContext ctx, BfgDbContext db, CancellationToken ct)
+    {
+        var userId = GetCurrentUserId(ctx);
+        if (!userId.HasValue) return Results.Unauthorized();
+        var wid = WorkspaceMiddleware.GetWorkspaceId(ctx);
+        var customerId = await GetCurrentCustomerId(db, ctx, ct);
+
+        var orderCount = 0;
+        var pendingOrders = 0;
+        var totalSpent = 0m;
+        var ticketCount = 0;
+        var openTickets = 0;
+        var walletBalance = 0m;
+
+        if (customerId.HasValue)
+        {
+            var orders = await db.Orders.AsNoTracking().Where(o => o.CustomerId == customerId).ToListAsync(ct);
+            orderCount = orders.Count;
+            pendingOrders = orders.Count(o => o.Status == "pending" || o.Status == "processing");
+            totalSpent = orders.Where(o => o.Status != "cancelled" && o.Status != "refunded").Sum(o => o.TotalAmount);
+
+            ticketCount = await db.SupportTickets.AsNoTracking().CountAsync(t => t.CustomerId == customerId && (!wid.HasValue || t.WorkspaceId == wid.Value), ct);
+            openTickets = await db.SupportTickets.AsNoTracking().CountAsync(t => t.CustomerId == customerId && t.Status != "closed" && t.Status != "resolved" && (!wid.HasValue || t.WorkspaceId == wid.Value), ct);
+
+            var wallet = await db.Wallets.AsNoTracking().FirstOrDefaultAsync(w => w.CustomerId == customerId && (!wid.HasValue || w.WorkspaceId == wid.Value), ct);
+            walletBalance = wallet != null ? wallet.CashBalance + wallet.CreditBalance : 0m;
+        }
+
+        return Results.Ok(new
+        {
+            order_count = orderCount,
+            pending_orders = pendingOrders,
+            total_spent = totalSpent.ToString("F2"),
+            ticket_count = ticketCount,
+            open_tickets = openTickets,
+            wallet_balance = walletBalance.ToString("F2")
+        });
     }
 
     private static async Task<IResult> ChangePassword(HttpContext ctx, BfgDbContext db, CancellationToken ct)
@@ -339,6 +421,14 @@ public static class MeEndpoints
         return Results.Ok(new { id = p.Id, amount = p.Amount.ToString("F2"), currency_code = currency?.Code ?? "" });
     }
 
+    private static async Task<IResult> SendMePayment(BfgDbContext db, HttpContext ctx, int id, CancellationToken ct)
+    {
+        var customerId = await GetCurrentCustomerId(db, ctx, ct);
+        var p = await db.Payments.AsNoTracking().FirstOrDefaultAsync(x => x.Id == id && x.CustomerId == customerId, ct);
+        if (p == null) return Results.NotFound();
+        return Results.Ok(new { message = "Payment sent" });
+    }
+
     private static async Task<IResult> ListMeInvoices(BfgDbContext db, HttpContext ctx, string? status, CancellationToken ct)
     {
         var customerId = await GetCurrentCustomerId(db, ctx, ct);
@@ -358,6 +448,69 @@ public static class MeEndpoints
         return Results.Ok(new { id = i.Id, status = i.Status, total = i.TotalAmount.ToString("F2"), items = new List<object>() });
     }
 
+    private static async Task<IResult> DownloadMeInvoicePdf(BfgDbContext db, HttpContext ctx, int id, CancellationToken ct)
+    {
+        var customerId = await GetCurrentCustomerId(db, ctx, ct);
+        var i = await db.Invoices.AsNoTracking().FirstOrDefaultAsync(x => x.Id == id && x.CustomerId == customerId, ct);
+        if (i == null) return Results.NotFound();
+        return Results.Ok(new { url = $"/invoices/{i.InvoiceNumber}.pdf" });
+    }
+
+    private static async Task<IResult> SendMeInvoice(BfgDbContext db, HttpContext ctx, int id, CancellationToken ct)
+    {
+        var customerId = await GetCurrentCustomerId(db, ctx, ct);
+        var i = await db.Invoices.AsNoTracking().FirstOrDefaultAsync(x => x.Id == id && x.CustomerId == customerId, ct);
+        if (i == null) return Results.NotFound();
+        return Results.Ok(new { message = "Invoice sent" });
+    }
+
+    private static IResult GetMeSupportOptions()
+    {
+        var options = new[]
+        {
+            new { type = "chat", available = true },
+            new { type = "email", available = true }
+        };
+        return Results.Ok(options);
+    }
+
+    private static async Task<IResult> ListMeTickets(BfgDbContext db, HttpContext ctx, string? status, CancellationToken ct)
+    {
+        var customerId = await GetCurrentCustomerId(db, ctx, ct);
+        if (!customerId.HasValue) return Results.Ok(Array.Empty<object>());
+        var wid = WorkspaceMiddleware.GetWorkspaceId(ctx);
+        var query = db.SupportTickets.AsNoTracking().Where(t => t.CustomerId == customerId && (!wid.HasValue || t.WorkspaceId == wid.Value));
+        if (!string.IsNullOrEmpty(status)) query = query.Where(t => t.Status == status);
+        var list = await query.OrderByDescending(t => t.CreatedAt)
+            .Select(t => new { id = t.Id, subject = t.Subject, status = t.Status, channel = t.Channel, created_at = t.CreatedAt })
+            .ToListAsync(ct);
+        return Results.Ok(list);
+    }
+
+    private static async Task<IResult> CreateMeTicket(BfgDbContext db, HttpContext ctx, CancellationToken ct)
+    {
+        var customerId = await GetCurrentCustomerId(db, ctx, ct);
+        var wid = WorkspaceMiddleware.GetWorkspaceId(ctx);
+        if (!customerId.HasValue || !wid.HasValue) return Results.Unauthorized();
+        var body = await ctx.Request.ReadFromJsonAsync<MeTicketCreateBody>(ct);
+        if (body == null) return Results.BadRequest();
+        var t = new SupportTicket
+        {
+            WorkspaceId = wid.Value,
+            CustomerId = customerId.Value,
+            TicketNumber = "TKT-" + Guid.NewGuid().ToString("N")[..10].ToUpperInvariant(),
+            Subject = body.subject ?? "",
+            Description = body.description ?? "",
+            Status = "new",
+            Channel = string.IsNullOrEmpty(body.channel) ? "web" : body.channel!,
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow
+        };
+        db.SupportTickets.Add(t);
+        await db.SaveChangesAsync(ct);
+        return Results.Created("/api/v1/me/tickets/", new { id = t.Id, subject = t.Subject, status = t.Status, customer = t.CustomerId });
+    }
+
     private sealed record ChangePasswordBody(string? old_password, string? new_password, string? confirm_password);
     private sealed record ResetPasswordBody(string? email);
     private sealed record MeAddressCreateBody(string? full_name, string? phone, string? email, string? address_line1, string? address_line2, string? city, string? state, string? postal_code, string? country, bool? is_default);
@@ -366,4 +519,6 @@ public static class MeEndpoints
     private sealed record PaymentMethodCreateBody(int gateway, string? method_type, string? cardholder_name, string? card_brand, string? card_last4, int? card_exp_month, int? card_exp_year, string? display_info, bool? is_default, bool? is_active);
     private sealed record PaymentMethodPatchBody(bool? is_default, string? cardholder_name);
     private sealed record MePatchBody(string? first_name, string? last_name, string? phone);
+    private sealed record AvatarBody(string? avatar_url);
+    private sealed record MeTicketCreateBody(string? subject, string? description, string? channel);
 }

@@ -96,6 +96,7 @@ app.MapSupportEndpoints();
 app.MapMarketingEndpoints();
 app.MapStorefrontEndpoints();
 app.MapMeEndpoints();
+app.MapPlatformEndpoints();
 app.MapOtherModuleEndpoints();
 app.MapInboxEndpoints();
 

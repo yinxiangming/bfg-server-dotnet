@@ -13,46 +13,74 @@ public static class DeliveryEndpoints
         var group = app.MapGroup("/api/v1/delivery").WithTags("Delivery").RequireAuthorization();
         var root = app.MapGroup("/api/v1").WithTags("Delivery").RequireAuthorization();
 
+        // Warehouses
         group.MapGet("/warehouses", ListWarehouses);
         group.MapPost("/warehouses/", CreateWarehouse);
         group.MapGet("/warehouses/{id:int}", GetWarehouse);
         group.MapPatch("/warehouses/{id:int}", PatchWarehouse);
         group.MapDelete("/warehouses/{id:int}", DeleteWarehouse);
+        group.MapPost("/warehouses/{id:int}/set_default", SetWarehouseDefault);
 
         root.MapGet("/warehouses", ListWarehouses);
         root.MapPost("/warehouses/", CreateWarehouse);
         root.MapGet("/warehouses/{id:int}", GetWarehouse);
         root.MapPatch("/warehouses/{id:int}", PatchWarehouse);
         root.MapDelete("/warehouses/{id:int}", DeleteWarehouse);
+        root.MapPost("/warehouses/{id:int}/set_default", SetWarehouseDefault);
 
+        // Carriers
         group.MapGet("/carriers", ListCarriers);
         group.MapPost("/carriers/", CreateCarrier);
         group.MapGet("/carriers/{id:int}", GetCarrier);
+        group.MapPatch("/carriers/{id:int}", PatchCarrier);
+        group.MapDelete("/carriers/{id:int}", DeleteCarrier);
+        group.MapGet("/carriers/plugins", ListCarrierPlugins);
+        group.MapGet("/carriers/config_schema", GetCarrierConfigSchema);
 
         root.MapGet("/carriers", ListCarriers);
         root.MapPost("/carriers/", CreateCarrier);
         root.MapGet("/carriers/{id:int}", GetCarrier);
+        root.MapPatch("/carriers/{id:int}", PatchCarrier);
+        root.MapDelete("/carriers/{id:int}", DeleteCarrier);
+        root.MapGet("/carriers/plugins", ListCarrierPlugins);
+        root.MapGet("/carriers/config_schema", GetCarrierConfigSchema);
 
+        // Freight Services
         group.MapGet("/freight-services", ListFreightServices);
         group.MapPost("/freight-services/", CreateFreightService);
         group.MapGet("/freight-services/{id:int}", GetFreightService);
+        group.MapPatch("/freight-services/{id:int}", PatchFreightService);
+        group.MapDelete("/freight-services/{id:int}", DeleteFreightService);
+        group.MapGet("/freight-services/templates", ListFreightServiceTemplates);
+        group.MapGet("/freight-services/for_country", GetFreightServicesForCountry);
 
         root.MapGet("/freight-services", ListFreightServices);
         root.MapPost("/freight-services/", CreateFreightService);
         root.MapGet("/freight-services/{id:int}", GetFreightService);
+        root.MapPatch("/freight-services/{id:int}", PatchFreightService);
+        root.MapDelete("/freight-services/{id:int}", DeleteFreightService);
+        root.MapGet("/freight-services/templates", ListFreightServiceTemplates);
+        root.MapGet("/freight-services/for_country", GetFreightServicesForCountry);
 
+        // Delivery Zones
         group.MapGet("/delivery-zones", ListDeliveryZones);
         group.MapPost("/delivery-zones/", CreateDeliveryZone);
+        group.MapPatch("/delivery-zones/{id:int}", PatchDeliveryZone);
+        group.MapDelete("/delivery-zones/{id:int}", DeleteDeliveryZone);
 
         root.MapGet("/delivery-zones", ListDeliveryZones);
         root.MapPost("/delivery-zones/", CreateDeliveryZone);
+        root.MapPatch("/delivery-zones/{id:int}", PatchDeliveryZone);
+        root.MapDelete("/delivery-zones/{id:int}", DeleteDeliveryZone);
 
+        // Shipments
         group.MapGet("/shipments", ListShipments);
         group.MapPost("/shipments/", CreateShipment);
 
         root.MapGet("/shipments", ListShipments);
         root.MapPost("/shipments/", CreateShipment);
 
+        // Package Templates
         group.MapPost("/package-templates/", CreatePackageTemplate);
         group.MapGet("/package-templates/", ListPackageTemplates);
         group.MapGet("/package-templates/{id:int}/", GetPackageTemplate);
@@ -63,17 +91,73 @@ public static class DeliveryEndpoints
         root.MapGet("/package-templates/{id:int}/", GetPackageTemplate);
         root.MapPatch("/package-templates/{id:int}/", PatchPackageTemplate);
 
+        // Freight Statuses
+        group.MapGet("/freight-statuses", ListFreightStatuses);
         group.MapPost("/freight-statuses/", CreateFreightStatus);
-        root.MapPost("/freight-statuses/", CreateFreightStatus);
+        group.MapGet("/freight-statuses/{id:int}", GetFreightStatus);
+        group.MapPatch("/freight-statuses/{id:int}", PatchFreightStatus);
+        group.MapDelete("/freight-statuses/{id:int}", DeleteFreightStatus);
 
+        root.MapGet("/freight-statuses", ListFreightStatuses);
+        root.MapPost("/freight-statuses/", CreateFreightStatus);
+        root.MapGet("/freight-statuses/{id:int}", GetFreightStatus);
+        root.MapPatch("/freight-statuses/{id:int}", PatchFreightStatus);
+        root.MapDelete("/freight-statuses/{id:int}", DeleteFreightStatus);
+
+        // Packaging Types
+        group.MapGet("/packaging-types", ListPackagingTypes);
+        group.MapPost("/packaging-types/", CreatePackagingType);
+        group.MapGet("/packaging-types/{id:int}", GetPackagingType);
+        group.MapPatch("/packaging-types/{id:int}", PatchPackagingType);
+        group.MapDelete("/packaging-types/{id:int}", DeletePackagingType);
+
+        root.MapGet("/packaging-types", ListPackagingTypes);
+        root.MapPost("/packaging-types/", CreatePackagingType);
+        root.MapGet("/packaging-types/{id:int}", GetPackagingType);
+        root.MapPatch("/packaging-types/{id:int}", PatchPackagingType);
+        root.MapDelete("/packaging-types/{id:int}", DeletePackagingType);
+
+        // Packages
+        group.MapGet("/packages", ListPackages);
+        group.MapPost("/packages/", CreatePackage);
+        group.MapGet("/packages/{id:int}", GetPackage);
+        group.MapPatch("/packages/{id:int}", PatchPackage);
+
+        root.MapGet("/packages", ListPackages);
+        root.MapPost("/packages/", CreatePackage);
+        root.MapGet("/packages/{id:int}", GetPackage);
+        root.MapPatch("/packages/{id:int}", PatchPackage);
+
+        // Consignments
         group.MapGet("/consignments", ListConsignments);
         group.MapPost("/consignments/", CreateConsignment);
         group.MapPatch("/consignments/{refKey}/", PatchConsignment);
+        group.MapDelete("/consignments/by-id/{id:int}", DeleteConsignment);
+        group.MapPost("/consignments/{consignmentNumber}/cancel", CancelConsignment);
+        group.MapPost("/consignments/{consignmentNumber}/update_status", UpdateConsignmentStatus);
+        group.MapPost("/consignments/{consignmentNumber}/add_tracking_event", AddConsignmentTrackingEvent);
 
         root.MapGet("/consignments", ListConsignments);
         root.MapPost("/consignments/", CreateConsignment);
         root.MapPatch("/consignments/{refKey}/", PatchConsignment);
+        root.MapDelete("/consignments/by-id/{id:int}", DeleteConsignment);
+        root.MapPost("/consignments/{consignmentNumber}/cancel", CancelConsignment);
+        root.MapPost("/consignments/{consignmentNumber}/update_status", UpdateConsignmentStatus);
+        root.MapPost("/consignments/{consignmentNumber}/add_tracking_event", AddConsignmentTrackingEvent);
+
+        // Tracking Events
+        group.MapGet("/tracking-events", ListTrackingEvents);
+        group.MapPost("/tracking-events/", CreateTrackingEvent);
+        group.MapGet("/tracking-events/{id:int}", GetTrackingEvent);
+
+        root.MapGet("/tracking-events", ListTrackingEvents);
+        root.MapPost("/tracking-events/", CreateTrackingEvent);
+        root.MapGet("/tracking-events/{id:int}", GetTrackingEvent);
     }
+
+    // ---------------------------------------------------------------------------
+    // Warehouses
+    // ---------------------------------------------------------------------------
 
     private static async Task<IResult> ListWarehouses(BfgDbContext db, HttpContext ctx, HttpRequest req, CancellationToken ct)
     {
@@ -83,7 +167,7 @@ public static class DeliveryEndpoints
         var query = db.Warehouses.AsNoTracking().Where(w => w.WorkspaceId == wid.Value);
         var total = await query.CountAsync(ct);
         var list = await query.OrderBy(w => w.Name).Skip((page - 1) * pageSize).Take(pageSize)
-            .Select(w => new { id = w.Id, workspace_id = w.WorkspaceId, name = w.Name, code = w.Code, is_active = w.IsActive, created_at = w.CreatedAt })
+            .Select(w => new { id = w.Id, workspace_id = w.WorkspaceId, name = w.Name, code = w.Code, is_active = w.IsActive, is_default = w.IsDefault, created_at = w.CreatedAt })
             .ToListAsync(ct);
         return Results.Ok(Pagination.Wrap(list, page, pageSize, total));
     }
@@ -115,7 +199,7 @@ public static class DeliveryEndpoints
         var wid = WorkspaceMiddleware.GetWorkspaceId(ctx);
         var w = await db.Warehouses.AsNoTracking().FirstOrDefaultAsync(x => x.Id == id && x.WorkspaceId == wid!.Value, ct);
         if (w == null) return Results.NotFound();
-        return Results.Ok(new { id = w.Id, name = w.Name, code = w.Code, is_active = w.IsActive, workspace_id = w.WorkspaceId });
+        return Results.Ok(new { id = w.Id, name = w.Name, code = w.Code, is_active = w.IsActive, is_default = w.IsDefault, workspace_id = w.WorkspaceId });
     }
 
     private static async Task<IResult> PatchWarehouse(BfgDbContext db, HttpContext ctx, int id, CancellationToken ct)
@@ -139,6 +223,28 @@ public static class DeliveryEndpoints
         await db.SaveChangesAsync(ct);
         return Results.NoContent();
     }
+
+    private static async Task<IResult> SetWarehouseDefault(BfgDbContext db, HttpContext ctx, int id, CancellationToken ct)
+    {
+        var wid = WorkspaceMiddleware.GetWorkspaceId(ctx);
+        if (!wid.HasValue) return Results.BadRequest();
+        var target = await db.Warehouses.FirstOrDefaultAsync(x => x.Id == id && x.WorkspaceId == wid.Value, ct);
+        if (target == null) return Results.NotFound();
+        var others = await db.Warehouses.Where(x => x.WorkspaceId == wid.Value && x.IsDefault && x.Id != id).ToListAsync(ct);
+        foreach (var o in others)
+        {
+            o.IsDefault = false;
+            o.UpdatedAt = DateTime.UtcNow;
+        }
+        target.IsDefault = true;
+        target.UpdatedAt = DateTime.UtcNow;
+        await db.SaveChangesAsync(ct);
+        return Results.Ok(new { id = target.Id, name = target.Name, is_default = target.IsDefault });
+    }
+
+    // ---------------------------------------------------------------------------
+    // Carriers
+    // ---------------------------------------------------------------------------
 
     private static async Task<IResult> ListCarriers(BfgDbContext db, HttpContext ctx, CancellationToken ct)
     {
@@ -178,8 +284,58 @@ public static class DeliveryEndpoints
         var wid = WorkspaceMiddleware.GetWorkspaceId(ctx);
         var c = await db.Carriers.AsNoTracking().FirstOrDefaultAsync(x => x.Id == id && (!wid.HasValue || x.WorkspaceId == wid.Value), ct);
         if (c == null) return Results.NotFound();
-        return Results.Ok(new { id = c.Id, name = c.Name, code = c.Code });
+        return Results.Ok(new { id = c.Id, name = c.Name, code = c.Code, is_active = c.IsActive });
     }
+
+    private static async Task<IResult> PatchCarrier(BfgDbContext db, HttpContext ctx, int id, CancellationToken ct)
+    {
+        var wid = WorkspaceMiddleware.GetWorkspaceId(ctx);
+        var c = await db.Carriers.FirstOrDefaultAsync(x => x.Id == id && (!wid.HasValue || x.WorkspaceId == wid.Value), ct);
+        if (c == null) return Results.NotFound();
+        var body = await ctx.Request.ReadFromJsonAsync<CarrierPatchBody>(ct);
+        if (body != null)
+        {
+            if (body.name != null) c.Name = body.name;
+            if (body.config != null) c.Config = body.config;
+            if (body.is_active.HasValue) c.IsActive = body.is_active.Value;
+            c.UpdatedAt = DateTime.UtcNow;
+            await db.SaveChangesAsync(ct);
+        }
+        return Results.Ok(new { id = c.Id, name = c.Name, code = c.Code, is_active = c.IsActive });
+    }
+
+    private static async Task<IResult> DeleteCarrier(BfgDbContext db, HttpContext ctx, int id, CancellationToken ct)
+    {
+        var wid = WorkspaceMiddleware.GetWorkspaceId(ctx);
+        var c = await db.Carriers.FirstOrDefaultAsync(x => x.Id == id && (!wid.HasValue || x.WorkspaceId == wid.Value), ct);
+        if (c == null) return Results.NotFound();
+        c.IsActive = false;
+        c.UpdatedAt = DateTime.UtcNow;
+        await db.SaveChangesAsync(ct);
+        return Results.NoContent();
+    }
+
+    private static IResult ListCarrierPlugins()
+    {
+        var plugins = new[]
+        {
+            new { name = "Custom", code = "custom" },
+            new { name = "NZ Post", code = "nzpost" },
+            new { name = "DHL", code = "dhl" },
+            new { name = "FedEx", code = "fedex" },
+            new { name = "UPS", code = "ups" }
+        };
+        return Results.Ok(plugins);
+    }
+
+    private static IResult GetCarrierConfigSchema()
+    {
+        return Results.Ok(new { });
+    }
+
+    // ---------------------------------------------------------------------------
+    // Freight Services
+    // ---------------------------------------------------------------------------
 
     private static async Task<IResult> ListFreightServices(BfgDbContext db, HttpContext ctx, CancellationToken ct)
     {
@@ -223,8 +379,64 @@ public static class DeliveryEndpoints
         var wid = WorkspaceMiddleware.GetWorkspaceId(ctx);
         var f = await db.FreightServices.AsNoTracking().FirstOrDefaultAsync(x => x.Id == id && (!wid.HasValue || x.WorkspaceId == wid.Value), ct);
         if (f == null) return Results.NotFound();
-        return Results.Ok(new { id = f.Id, name = f.Name, code = f.Code, base_price = f.BasePrice });
+        return Results.Ok(new { id = f.Id, name = f.Name, code = f.Code, base_price = f.BasePrice, is_active = f.IsActive });
     }
+
+    private static async Task<IResult> PatchFreightService(BfgDbContext db, HttpContext ctx, int id, CancellationToken ct)
+    {
+        var wid = WorkspaceMiddleware.GetWorkspaceId(ctx);
+        var f = await db.FreightServices.FirstOrDefaultAsync(x => x.Id == id && (!wid.HasValue || x.WorkspaceId == wid.Value), ct);
+        if (f == null) return Results.NotFound();
+        var body = await ctx.Request.ReadFromJsonAsync<FreightServicePatchBody>(ct);
+        if (body != null)
+        {
+            if (body.name != null) f.Name = body.name;
+            if (body.code != null) f.Code = body.code;
+            if (body.base_price != null && decimal.TryParse(body.base_price, out var bp)) f.BasePrice = bp;
+            if (body.is_active.HasValue) f.IsActive = body.is_active.Value;
+        }
+        await db.SaveChangesAsync(ct);
+        return Results.Ok(new { id = f.Id, name = f.Name, code = f.Code, base_price = f.BasePrice, is_active = f.IsActive });
+    }
+
+    private static async Task<IResult> DeleteFreightService(BfgDbContext db, HttpContext ctx, int id, CancellationToken ct)
+    {
+        var wid = WorkspaceMiddleware.GetWorkspaceId(ctx);
+        var f = await db.FreightServices.FirstOrDefaultAsync(x => x.Id == id && (!wid.HasValue || x.WorkspaceId == wid.Value), ct);
+        if (f == null) return Results.NotFound();
+        f.IsActive = false;
+        await db.SaveChangesAsync(ct);
+        return Results.NoContent();
+    }
+
+    private static IResult ListFreightServiceTemplates()
+    {
+        var templates = new[]
+        {
+            new { name = "Standard", code = "standard", transport_type = "road" },
+            new { name = "Express", code = "express", transport_type = "air" },
+            new { name = "Economy", code = "economy", transport_type = "road" },
+            new { name = "Overnight", code = "overnight", transport_type = "air" },
+            new { name = "International", code = "international", transport_type = "air" }
+        };
+        return Results.Ok(templates);
+    }
+
+    private static async Task<IResult> GetFreightServicesForCountry(BfgDbContext db, HttpContext ctx, HttpRequest req, CancellationToken ct)
+    {
+        var wid = WorkspaceMiddleware.GetWorkspaceId(ctx);
+        var country = req.Query["country"].FirstOrDefault();
+        var query = db.FreightServices.AsNoTracking()
+            .Where(f => (!wid.HasValue || f.WorkspaceId == wid.Value) && f.IsActive);
+        var list = await query.OrderBy(f => f.SortOrder).ThenBy(f => f.Name)
+            .Select(f => new { id = f.Id, name = f.Name, code = f.Code, base_price = f.BasePrice, is_active = f.IsActive })
+            .ToListAsync(ct);
+        return Results.Ok(list);
+    }
+
+    // ---------------------------------------------------------------------------
+    // Delivery Zones
+    // ---------------------------------------------------------------------------
 
     private static async Task<IResult> ListDeliveryZones(BfgDbContext db, HttpContext ctx, CancellationToken ct)
     {
@@ -246,6 +458,36 @@ public static class DeliveryEndpoints
         return Results.Created("/api/v1/delivery/delivery-zones/", new { id = z.Id, name = z.Name });
     }
 
+    private static async Task<IResult> PatchDeliveryZone(BfgDbContext db, HttpContext ctx, int id, CancellationToken ct)
+    {
+        var wid = WorkspaceMiddleware.GetWorkspaceId(ctx);
+        var z = await db.DeliveryZones.FirstOrDefaultAsync(x => x.Id == id && (!wid.HasValue || x.WorkspaceId == wid.Value), ct);
+        if (z == null) return Results.NotFound();
+        var body = await ctx.Request.ReadFromJsonAsync<DeliveryZonePatchBody>(ct);
+        if (body != null)
+        {
+            if (body.name != null) z.Name = body.name;
+            if (body.is_active.HasValue) z.IsActive = body.is_active.Value;
+            z.UpdatedAt = DateTime.UtcNow;
+            await db.SaveChangesAsync(ct);
+        }
+        return Results.Ok(new { id = z.Id, name = z.Name, is_active = z.IsActive });
+    }
+
+    private static async Task<IResult> DeleteDeliveryZone(BfgDbContext db, HttpContext ctx, int id, CancellationToken ct)
+    {
+        var wid = WorkspaceMiddleware.GetWorkspaceId(ctx);
+        var z = await db.DeliveryZones.FirstOrDefaultAsync(x => x.Id == id && (!wid.HasValue || x.WorkspaceId == wid.Value), ct);
+        if (z == null) return Results.NotFound();
+        db.DeliveryZones.Remove(z);
+        await db.SaveChangesAsync(ct);
+        return Results.NoContent();
+    }
+
+    // ---------------------------------------------------------------------------
+    // Shipments
+    // ---------------------------------------------------------------------------
+
     private static async Task<IResult> ListShipments(BfgDbContext db, HttpContext ctx, CancellationToken ct)
     {
         var wid = WorkspaceMiddleware.GetWorkspaceId(ctx);
@@ -265,6 +507,10 @@ public static class DeliveryEndpoints
         await db.SaveChangesAsync(ct);
         return Results.Created("/api/v1/delivery/shipments/", new { id = s.Id, order_id = s.OrderId, status = s.Status });
     }
+
+    // ---------------------------------------------------------------------------
+    // Package Templates
+    // ---------------------------------------------------------------------------
 
     private static async Task<IResult> CreatePackageTemplate(BfgDbContext db, HttpContext ctx, CancellationToken ct)
     {
@@ -346,6 +592,23 @@ public static class DeliveryEndpoints
         return Results.Ok(new { id = t.Id, name = t.Name, description = t.Description });
     }
 
+    // ---------------------------------------------------------------------------
+    // Freight Statuses
+    // ---------------------------------------------------------------------------
+
+    private static async Task<IResult> ListFreightStatuses(BfgDbContext db, HttpContext ctx, HttpRequest req, CancellationToken ct)
+    {
+        var wid = WorkspaceMiddleware.GetWorkspaceId(ctx);
+        if (!wid.HasValue) return Results.Ok(Pagination.Wrap(new List<object>(), 1, 20, 0));
+        var (page, pageSize) = Pagination.FromRequest(req);
+        var query = db.FreightStatuses.AsNoTracking().Where(f => f.WorkspaceId == wid.Value);
+        var total = await query.CountAsync(ct);
+        var list = await query.OrderBy(f => f.SortOrder).ThenBy(f => f.Name).Skip((page - 1) * pageSize).Take(pageSize)
+            .Select(f => new { id = f.Id, code = f.Code, name = f.Name, type = f.Type, state = f.State, color = f.Color, is_active = f.IsActive })
+            .ToListAsync(ct);
+        return Results.Ok(Pagination.Wrap(list, page, pageSize, total));
+    }
+
     private static async Task<IResult> CreateFreightStatus(BfgDbContext db, HttpContext ctx, CancellationToken ct)
     {
         var wid = WorkspaceMiddleware.GetWorkspaceId(ctx);
@@ -373,6 +636,195 @@ public static class DeliveryEndpoints
         await db.SaveChangesAsync(ct);
         return Results.Created("/api/v1/delivery/freight-statuses/", new { id = f.Id, code = f.Code, name = f.Name, type = f.Type, state = f.State });
     }
+
+    private static async Task<IResult> GetFreightStatus(BfgDbContext db, HttpContext ctx, int id, CancellationToken ct)
+    {
+        var wid = WorkspaceMiddleware.GetWorkspaceId(ctx);
+        var f = await db.FreightStatuses.AsNoTracking().FirstOrDefaultAsync(x => x.Id == id && (!wid.HasValue || x.WorkspaceId == wid.Value), ct);
+        if (f == null) return Results.NotFound();
+        return Results.Ok(new { id = f.Id, code = f.Code, name = f.Name, type = f.Type, state = f.State, color = f.Color, is_active = f.IsActive, sort_order = f.SortOrder });
+    }
+
+    private static async Task<IResult> PatchFreightStatus(BfgDbContext db, HttpContext ctx, int id, CancellationToken ct)
+    {
+        var wid = WorkspaceMiddleware.GetWorkspaceId(ctx);
+        var f = await db.FreightStatuses.FirstOrDefaultAsync(x => x.Id == id && (!wid.HasValue || x.WorkspaceId == wid.Value), ct);
+        if (f == null) return Results.NotFound();
+        var body = await ctx.Request.ReadFromJsonAsync<FreightStatusPatchBody>(ct);
+        if (body != null)
+        {
+            if (body.name != null) f.Name = body.name;
+            if (body.code != null) f.Code = body.code;
+            if (body.type != null) f.Type = body.type;
+            if (body.state != null) f.State = body.state;
+            if (body.color != null) f.Color = body.color;
+            if (body.description != null) f.Description = body.description;
+            if (body.is_active.HasValue) f.IsActive = body.is_active.Value;
+            if (body.is_public.HasValue) f.IsPublic = body.is_public.Value;
+            if (body.send_message.HasValue) f.SendMessage = body.send_message.Value;
+            if (body.order.HasValue) f.SortOrder = body.order.Value;
+            f.UpdatedAt = DateTime.UtcNow;
+            await db.SaveChangesAsync(ct);
+        }
+        return Results.Ok(new { id = f.Id, code = f.Code, name = f.Name, type = f.Type, state = f.State });
+    }
+
+    private static async Task<IResult> DeleteFreightStatus(BfgDbContext db, HttpContext ctx, int id, CancellationToken ct)
+    {
+        var wid = WorkspaceMiddleware.GetWorkspaceId(ctx);
+        var f = await db.FreightStatuses.FirstOrDefaultAsync(x => x.Id == id && (!wid.HasValue || x.WorkspaceId == wid.Value), ct);
+        if (f == null) return Results.NotFound();
+        f.IsActive = false;
+        f.UpdatedAt = DateTime.UtcNow;
+        await db.SaveChangesAsync(ct);
+        return Results.NoContent();
+    }
+
+    // ---------------------------------------------------------------------------
+    // Packaging Types
+    // ---------------------------------------------------------------------------
+
+    private static async Task<IResult> ListPackagingTypes(BfgDbContext db, HttpContext ctx, HttpRequest req, CancellationToken ct)
+    {
+        var wid = WorkspaceMiddleware.GetWorkspaceId(ctx);
+        if (!wid.HasValue) return Results.Ok(Pagination.Wrap(new List<object>(), 1, 20, 0));
+        var (page, pageSize) = Pagination.FromRequest(req);
+        var query = db.PackagingTypes.AsNoTracking().Where(p => p.WorkspaceId == wid.Value);
+        var total = await query.CountAsync(ct);
+        var list = await query.OrderBy(p => p.Name).Skip((page - 1) * pageSize).Take(pageSize)
+            .Select(p => new { id = p.Id, name = p.Name, code = p.Code, is_active = p.IsActive })
+            .ToListAsync(ct);
+        return Results.Ok(Pagination.Wrap(list, page, pageSize, total));
+    }
+
+    private static async Task<IResult> CreatePackagingType(BfgDbContext db, HttpContext ctx, CancellationToken ct)
+    {
+        var wid = WorkspaceMiddleware.GetWorkspaceId(ctx);
+        if (!wid.HasValue) return Results.BadRequest();
+        var body = await ctx.Request.ReadFromJsonAsync<PackagingTypeCreateBody>(ct);
+        if (body == null || string.IsNullOrWhiteSpace(body.name)) return Results.BadRequest();
+        var now = DateTime.UtcNow;
+        var p = new PackagingType
+        {
+            WorkspaceId = wid.Value,
+            Name = body.name,
+            Code = body.code ?? "",
+            IsActive = body.is_active ?? true,
+            CreatedAt = now,
+            UpdatedAt = now
+        };
+        db.PackagingTypes.Add(p);
+        await db.SaveChangesAsync(ct);
+        return Results.Created("/api/v1/delivery/packaging-types/", new { id = p.Id, name = p.Name, code = p.Code, is_active = p.IsActive });
+    }
+
+    private static async Task<IResult> GetPackagingType(BfgDbContext db, HttpContext ctx, int id, CancellationToken ct)
+    {
+        var wid = WorkspaceMiddleware.GetWorkspaceId(ctx);
+        var p = await db.PackagingTypes.AsNoTracking().FirstOrDefaultAsync(x => x.Id == id && (!wid.HasValue || x.WorkspaceId == wid.Value), ct);
+        if (p == null) return Results.NotFound();
+        return Results.Ok(new { id = p.Id, name = p.Name, code = p.Code, is_active = p.IsActive });
+    }
+
+    private static async Task<IResult> PatchPackagingType(BfgDbContext db, HttpContext ctx, int id, CancellationToken ct)
+    {
+        var wid = WorkspaceMiddleware.GetWorkspaceId(ctx);
+        var p = await db.PackagingTypes.FirstOrDefaultAsync(x => x.Id == id && (!wid.HasValue || x.WorkspaceId == wid.Value), ct);
+        if (p == null) return Results.NotFound();
+        var body = await ctx.Request.ReadFromJsonAsync<PackagingTypePatchBody>(ct);
+        if (body != null)
+        {
+            if (body.name != null) p.Name = body.name;
+            if (body.code != null) p.Code = body.code;
+            if (body.is_active.HasValue) p.IsActive = body.is_active.Value;
+            p.UpdatedAt = DateTime.UtcNow;
+            await db.SaveChangesAsync(ct);
+        }
+        return Results.Ok(new { id = p.Id, name = p.Name, code = p.Code, is_active = p.IsActive });
+    }
+
+    private static async Task<IResult> DeletePackagingType(BfgDbContext db, HttpContext ctx, int id, CancellationToken ct)
+    {
+        var wid = WorkspaceMiddleware.GetWorkspaceId(ctx);
+        var p = await db.PackagingTypes.FirstOrDefaultAsync(x => x.Id == id && (!wid.HasValue || x.WorkspaceId == wid.Value), ct);
+        if (p == null) return Results.NotFound();
+        db.PackagingTypes.Remove(p);
+        await db.SaveChangesAsync(ct);
+        return Results.NoContent();
+    }
+
+    // ---------------------------------------------------------------------------
+    // Packages (DeliveryPackage)
+    // ---------------------------------------------------------------------------
+
+    private static async Task<IResult> ListPackages(BfgDbContext db, HttpContext ctx, HttpRequest req, CancellationToken ct)
+    {
+        var wid = WorkspaceMiddleware.GetWorkspaceId(ctx);
+        if (!wid.HasValue) return Results.Ok(Pagination.Wrap(new List<object>(), 1, 20, 0));
+        var (page, pageSize) = Pagination.FromRequest(req);
+        var orderIds = wid.HasValue
+            ? await db.Orders.AsNoTracking().Where(o => o.WorkspaceId == wid.Value).Select(o => o.Id).ToListAsync(ct)
+            : null;
+        var query = db.DeliveryPackages.AsNoTracking();
+        if (orderIds != null) query = query.Where(p => p.OrderId.HasValue && orderIds.Contains(p.OrderId.Value));
+        var total = await query.CountAsync(ct);
+        var list = await query.OrderByDescending(p => p.CreatedAt).Skip((page - 1) * pageSize).Take(pageSize)
+            .Select(p => new { id = p.Id, consignment_id = p.ConsignmentId, weight = p.Weight, created_at = p.CreatedAt })
+            .ToListAsync(ct);
+        return Results.Ok(Pagination.Wrap(list, page, pageSize, total));
+    }
+
+    private static async Task<IResult> CreatePackage(BfgDbContext db, HttpContext ctx, CancellationToken ct)
+    {
+        var wid = WorkspaceMiddleware.GetWorkspaceId(ctx);
+        if (!wid.HasValue) return Results.BadRequest();
+        var body = await ctx.Request.ReadFromJsonAsync<PackageCreateBody>(ct);
+        if (body == null) return Results.BadRequest();
+        var now = DateTime.UtcNow;
+        var p = new DeliveryPackage
+        {
+            ConsignmentId = body.consignment_id,
+            Weight = body.weight ?? 0,
+            Length = body.length ?? 0,
+            Width = body.width ?? 0,
+            Height = body.height ?? 0,
+            CreatedAt = now,
+            PackageNumber = $"PKG-{Guid.NewGuid().ToString("N")[..8]}",
+            State = "pending",
+            Description = "",
+            Notes = ""
+        };
+        db.DeliveryPackages.Add(p);
+        await db.SaveChangesAsync(ct);
+        return Results.Created("/api/v1/delivery/packages/", new { id = p.Id, consignment_id = p.ConsignmentId, weight = p.Weight });
+    }
+
+    private static async Task<IResult> GetPackage(BfgDbContext db, HttpContext ctx, int id, CancellationToken ct)
+    {
+        var p = await db.DeliveryPackages.AsNoTracking().FirstOrDefaultAsync(x => x.Id == id, ct);
+        if (p == null) return Results.NotFound();
+        return Results.Ok(new { id = p.Id, consignment_id = p.ConsignmentId, weight = p.Weight, length = p.Length, width = p.Width, height = p.Height });
+    }
+
+    private static async Task<IResult> PatchPackage(BfgDbContext db, HttpContext ctx, int id, CancellationToken ct)
+    {
+        var p = await db.DeliveryPackages.FirstOrDefaultAsync(x => x.Id == id, ct);
+        if (p == null) return Results.NotFound();
+        var body = await ctx.Request.ReadFromJsonAsync<PackagePatchBody>(ct);
+        if (body != null)
+        {
+            if (body.weight.HasValue) p.Weight = body.weight.Value;
+            if (body.length.HasValue) p.Length = body.length.Value;
+            if (body.width.HasValue) p.Width = body.width.Value;
+            if (body.height.HasValue) p.Height = body.height.Value;
+            await db.SaveChangesAsync(ct);
+        }
+        return Results.Ok(new { id = p.Id, consignment_id = p.ConsignmentId, weight = p.Weight });
+    }
+
+    // ---------------------------------------------------------------------------
+    // Consignments
+    // ---------------------------------------------------------------------------
 
     private static async Task<IResult> ListConsignments(BfgDbContext db, HttpContext ctx, HttpRequest req, CancellationToken ct)
     {
@@ -467,19 +919,159 @@ public static class DeliveryEndpoints
         return Results.Ok(new { id = c.Id, consignment_number = c.ConsignmentNumber, tracking_number = c.TrackingNumber, state = c.State });
     }
 
+    private static async Task<IResult> DeleteConsignment(BfgDbContext db, HttpContext ctx, int id, CancellationToken ct)
+    {
+        var wid = WorkspaceMiddleware.GetWorkspaceId(ctx);
+        var c = await db.Consignments.FirstOrDefaultAsync(x => x.Id == id && (!wid.HasValue || x.WorkspaceId == wid.Value), ct);
+        if (c == null) return Results.NotFound();
+        db.Consignments.Remove(c);
+        await db.SaveChangesAsync(ct);
+        return Results.NoContent();
+    }
+
+    private static async Task<IResult> CancelConsignment(BfgDbContext db, HttpContext ctx, string consignmentNumber, CancellationToken ct)
+    {
+        var wid = WorkspaceMiddleware.GetWorkspaceId(ctx);
+        var c = await db.Consignments.FirstOrDefaultAsync(x => x.ConsignmentNumber == consignmentNumber && (!wid.HasValue || x.WorkspaceId == wid.Value), ct);
+        if (c == null) return Results.NotFound();
+        c.State = "cancelled";
+        c.UpdatedAt = DateTime.UtcNow;
+        await db.SaveChangesAsync(ct);
+        return Results.Ok(new { id = c.Id, consignment_number = c.ConsignmentNumber, state = c.State });
+    }
+
+    private static async Task<IResult> UpdateConsignmentStatus(BfgDbContext db, HttpContext ctx, string consignmentNumber, CancellationToken ct)
+    {
+        var wid = WorkspaceMiddleware.GetWorkspaceId(ctx);
+        var c = await db.Consignments.FirstOrDefaultAsync(x => x.ConsignmentNumber == consignmentNumber && (!wid.HasValue || x.WorkspaceId == wid.Value), ct);
+        if (c == null) return Results.NotFound();
+        var body = await ctx.Request.ReadFromJsonAsync<ConsignmentUpdateStatusBody>(ct);
+        if (body?.state != null)
+        {
+            c.State = body.state;
+            c.UpdatedAt = DateTime.UtcNow;
+            await db.SaveChangesAsync(ct);
+        }
+        return Results.Ok(new { id = c.Id, consignment_number = c.ConsignmentNumber, state = c.State });
+    }
+
+    private static async Task<IResult> AddConsignmentTrackingEvent(BfgDbContext db, HttpContext ctx, string consignmentNumber, CancellationToken ct)
+    {
+        var wid = WorkspaceMiddleware.GetWorkspaceId(ctx);
+        var c = await db.Consignments.AsNoTracking().FirstOrDefaultAsync(x => x.ConsignmentNumber == consignmentNumber && (!wid.HasValue || x.WorkspaceId == wid.Value), ct);
+        if (c == null) return Results.NotFound();
+        var body = await ctx.Request.ReadFromJsonAsync<TrackingEventCreateBody>(ct);
+        if (body == null) return Results.BadRequest();
+        var now = DateTime.UtcNow;
+        var ev = new TrackingEvent
+        {
+            WorkspaceId = wid.HasValue ? wid.Value : c.WorkspaceId,
+            ConsignmentId = c.Id,
+            PackageId = body.package_id,
+            EventType = body.event_type ?? "",
+            Description = body.description ?? "",
+            Location = body.location ?? "",
+            OccurredAt = body.occurred_at ?? now,
+            CreatedAt = now
+        };
+        db.TrackingEvents.Add(ev);
+        await db.SaveChangesAsync(ct);
+        return Results.Created("/api/v1/delivery/tracking-events/", new { id = ev.Id, consignment_id = ev.ConsignmentId, event_type = ev.EventType, occurred_at = ev.OccurredAt });
+    }
+
+    // ---------------------------------------------------------------------------
+    // Tracking Events
+    // ---------------------------------------------------------------------------
+
+    private static async Task<IResult> ListTrackingEvents(BfgDbContext db, HttpContext ctx, HttpRequest req, CancellationToken ct)
+    {
+        var wid = WorkspaceMiddleware.GetWorkspaceId(ctx);
+        if (!wid.HasValue) return Results.Ok(Pagination.Wrap(new List<object>(), 1, 20, 0));
+        var (page, pageSize) = Pagination.FromRequest(req);
+
+        var consignmentIdStr = req.Query["consignment_id"].FirstOrDefault();
+        var packageIdStr = req.Query["package_id"].FirstOrDefault();
+
+        var query = db.TrackingEvents.AsNoTracking().Where(e => e.WorkspaceId == wid.Value);
+        if (int.TryParse(consignmentIdStr, out var consignmentId) && consignmentId > 0)
+            query = query.Where(e => e.ConsignmentId == consignmentId);
+        if (int.TryParse(packageIdStr, out var packageId) && packageId > 0)
+            query = query.Where(e => e.PackageId == packageId);
+
+        var total = await query.CountAsync(ct);
+        var list = await query.OrderByDescending(e => e.OccurredAt).Skip((page - 1) * pageSize).Take(pageSize)
+            .Select(e => new { id = e.Id, consignment_id = e.ConsignmentId, package_id = e.PackageId, event_type = e.EventType, description = e.Description, location = e.Location, occurred_at = e.OccurredAt })
+            .ToListAsync(ct);
+        return Results.Ok(Pagination.Wrap(list, page, pageSize, total));
+    }
+
+    private static async Task<IResult> CreateTrackingEvent(BfgDbContext db, HttpContext ctx, CancellationToken ct)
+    {
+        var wid = WorkspaceMiddleware.GetWorkspaceId(ctx);
+        if (!wid.HasValue) return Results.BadRequest();
+        var body = await ctx.Request.ReadFromJsonAsync<TrackingEventCreateBody>(ct);
+        if (body == null) return Results.BadRequest();
+        var now = DateTime.UtcNow;
+        var ev = new TrackingEvent
+        {
+            WorkspaceId = wid.Value,
+            ConsignmentId = body.consignment_id,
+            PackageId = body.package_id,
+            EventType = body.event_type ?? "",
+            Description = body.description ?? "",
+            Location = body.location ?? "",
+            OccurredAt = body.occurred_at ?? now,
+            CreatedAt = now
+        };
+        db.TrackingEvents.Add(ev);
+        await db.SaveChangesAsync(ct);
+        return Results.Created("/api/v1/delivery/tracking-events/", new { id = ev.Id, consignment_id = ev.ConsignmentId, package_id = ev.PackageId, event_type = ev.EventType, occurred_at = ev.OccurredAt });
+    }
+
+    private static async Task<IResult> GetTrackingEvent(BfgDbContext db, HttpContext ctx, int id, CancellationToken ct)
+    {
+        var wid = WorkspaceMiddleware.GetWorkspaceId(ctx);
+        var ev = await db.TrackingEvents.AsNoTracking().FirstOrDefaultAsync(x => x.Id == id && (!wid.HasValue || x.WorkspaceId == wid.Value), ct);
+        if (ev == null) return Results.NotFound();
+        return Results.Ok(new { id = ev.Id, consignment_id = ev.ConsignmentId, package_id = ev.PackageId, event_type = ev.EventType, description = ev.Description, location = ev.Location, occurred_at = ev.OccurredAt, created_at = ev.CreatedAt });
+    }
+
+    // ---------------------------------------------------------------------------
+    // Helpers
+    // ---------------------------------------------------------------------------
+
     private static decimal ParseDec(string? s) =>
         decimal.TryParse(s, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var v) ? v : 0;
 
+    // ---------------------------------------------------------------------------
+    // Request body records
+    // ---------------------------------------------------------------------------
+
     private sealed record WarehouseCreateBody(string? name, string? code, bool? is_active);
     private sealed record WarehousePatchBody(string? name);
+
     private sealed record CarrierCreateBody(string? name, string? code, bool? is_active);
+    private sealed record CarrierPatchBody(string? name, string? config, bool? is_active);
+
     private sealed record FreightServiceCreateBody(int carrier, string? name, string? code, string? base_price, string? price_per_kg, bool? is_active);
+    private sealed record FreightServicePatchBody(string? name, string? code, string? base_price, bool? is_active);
+
     private sealed record DeliveryZoneCreateBody(string? name);
+    private sealed record DeliveryZonePatchBody(string? name, bool? is_active);
+
     private sealed record ShipmentCreateBody(int? order_id, int? carrier_id, string? tracking_number, string? status);
 
     private sealed record PackageTemplateCreateBody(string? code, string? name, string? description, string? length, string? width, string? height, string? tare_weight, string? max_weight, int? order, bool? is_active);
     private sealed record PackageTemplatePatchBody(string? name, string? description);
+
     private sealed record FreightStatusCreateBody(string? code, string? name, string? type, string? state, string? description, string? color, int? order, bool? is_active, bool? is_public, bool? send_message);
+    private sealed record FreightStatusPatchBody(string? code, string? name, string? type, string? state, string? description, string? color, int? order, bool? is_active, bool? is_public, bool? send_message);
+
+    private sealed record PackagingTypeCreateBody(string? name, string? code, bool? is_active);
+    private sealed record PackagingTypePatchBody(string? name, string? code, bool? is_active);
+
+    private sealed record PackageCreateBody(int? consignment_id, string? tracking_number, decimal? weight, decimal? length, decimal? width, decimal? height);
+    private sealed record PackagePatchBody(string? tracking_number, decimal? weight, decimal? length, decimal? width, decimal? height);
 
     private sealed class ConsignmentCreateBody
     {
@@ -492,4 +1084,7 @@ public static class DeliveryEndpoints
     }
 
     private sealed record ConsignmentPatchBody(string? tracking_number);
+    private sealed record ConsignmentUpdateStatusBody(string? state);
+
+    private sealed record TrackingEventCreateBody(int? consignment_id, int? package_id, string? event_type, string? description, string? location, DateTime? occurred_at);
 }
